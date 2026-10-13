@@ -4,6 +4,29 @@
 
 Utvikle et webbasert rombookingsystem for Velferdstinget Vest. Systemet skal erstatte eller supplere Google Kalender, med et lignende kalendergrensesnitt, men med tilgangsstyring og bookingregler.
 
+## Kom i gang
+
+Krever Docker. `make dev`, `make demo` og `make test` trenger i tillegg Java 21 og Node 22.
+
+| Kommando | Hva den gjør |
+|---|---|
+| `make dev` | PostgreSQL i Docker, Spring Boot og React (API-modus) lokalt med hot reload. Åpne http://localhost:5173. Demoen som «Prøv demo» lenker til kjører på http://localhost:5174/demo/. |
+| `make demo` | Frittstående demo med testdata i nettleseren, uten backend. Åpne http://localhost:5173. |
+| `make test` | Frontend- og backendtester |
+| `make e2e` | Ende-til-ende-test av bookingflyten mot en app som kjører (`make dev`, eller `make up` med `E2E_BASE_URL=http://localhost:8088`) |
+| `make up` | Hele løsningen i Docker (PostgreSQL, Spring Boot, Nginx). Åpne http://localhost:8088. Demoen ligger på http://localhost:8088/demo/. |
+| `make down` | Stopper containerne. Dataene beholdes. |
+| `make reset-db` | Sletter utviklingsdatabasen etter bekreftelse |
+
+I `make dev` og `make up` logger du inn med en av testbrukerne og passordet `dev`, for eksempel `kari@example.no` eller `admin@example.no`. Alle testbrukerne står i `backend/README.md`.
+
+- Utviklingsdatabasen får eksempelbookinger for denne og neste uke hver gang backend starter med `dev`-profilen. Eksisterende bookinger blir aldri endret eller duplisert.
+- «Prøv demo» på innloggingssiden åpner den frittstående demoen. Demoen er et eget bygg med testdata i nettleseren, og den kontakter aldri backend eller databasen.
+- `make dev` stopper backend, frontend og demo med Ctrl+C. Backend starter på nytt automatisk når Java-koden kompileres på nytt, for eksempel fra IDE-en eller med `./mvnw compile`.
+- `make up` bruker Spring-profilen `dev` med testbrukere og felles passord. Oppsettet er bare for lokal testing, ikke for produksjon.
+- Docker-imagene slår ikke på utviklingsinnlogging, eksempeldata eller demoen selv. Det lokale oppsettet bygger frontend med `WITH_DEMO=true`. Backend nekter å starte hvis utviklingsinnlogging er slått på uten `dev`-profilen, og produksjonsbygget av frontend inneholder aldri demodata eller brukerbytte.
+- Bytt port for `make up` med `make up APP_PORT=9000`.
+
 ## Funksjonelle krav
 
 ### Kalender og rom
@@ -119,12 +142,7 @@ Systemet skal hostes på egne servere og bygges som en Single Page Application (
 - PostgreSQL kjører som egen databasetjeneste.
 - Tjenestene kjøres i Docker-containere på egne servere.
 
-## Github repo
-- Legge github repo i fribyte sitt?
-
-**Mål:** Et enkelt og brukervennlig bookingsystem som føles som Google Kalender, men automatisk håndhever Velferdstingets bookingregler.
-
-## Fremdriftsplan
+### Fremdriftsplan
 - Faste tider / rom
 - Mangeee organisasjoner
 - iCal 
@@ -133,3 +151,4 @@ Systemet skal hostes på egne servere og bygges som en Single Page Application (
 - Rom og tilganger må kunne takle mange organisasjoner og mange rom enklere.
 - Gjerne ikke se 100% likt ut som google kalender, men ha en enkel og oversiktlig kalender som er lett å bruke.
 - Klikk and drop tider for å flytte bookinger.
+- Kunne legge til rom

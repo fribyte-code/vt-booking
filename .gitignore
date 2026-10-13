@@ -1,0 +1,35 @@
+# ── Local only: AI assistant config and internal planning docs ──
+.claude/
+CLAUDE.md
+
+# ── Secrets and local overrides ──
+.env
+.env.*
+*.local
+*.pem
+*.key
+# The frontend's .env files only select the data mode (no secrets), so they are committed.
+!frontend/.env
+!frontend/.env.api
+!frontend/.env.demo
+!frontend/.env.production
+
+# ── Build output and dependencies ──
+node_modules/
+dist/
+dist-ssr/
+target/
+.vite/
+
+# ── Logs ──
+logs/
+*.log
+
+# ── Editors and OS ──
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+*.suo
+*.sw?

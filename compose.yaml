@@ -1,0 +1,29 @@
+# Local stack for trying the complete application: `make up`, then http://localhost:8088.
+# NOT a production setup: the backend runs with the "dev" profile (seeded users with a
+# shared password, plain-http cookies). The images themselves enable none of that.
+name: vt-booking
+
+include:
+  - backend/compose.yaml # PostgreSQL ("db"), also used on its own by `make dev`
+
+services:
+  backend:
+    build: backend
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:postgresql://db:5432/booking
+      DB_PASSWORD: ${DB_PASSWORD:-booking-dev}
+    depends_on:
+      db:
+        condition: service_healthy
+    # No published port: the browser reaches the API through Nginx only.
+
+  frontend:
+    build:
+      context: frontend
+      args:
+        WITH_DEMO: "true" # also serve the demo at /demo/, linked from the login page
+    ports:
+      - "127.0.0.1:${APP_PORT:-8088}:80"
+    depends_on:
+      - backend
