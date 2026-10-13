@@ -99,7 +99,7 @@ Systemet skal hostes på egne servere og bygges som en Single Page Application (
 - **Frontend:** React + TypeScript + Vite.
 - **Rendering:** Client-side rendering (CSR), ingen server-side rendering (SSR).
 - **UI:** Tailwind CSS + FullCalendar.
-- **Backend:** Spring Boot REST API.
+- **Backend:** Spring Boot REST API. (python fastapi vurderes)
 - **Database:** PostgreSQL.
 - **Kommunikasjon:** HTTPS og JSON.
 - **Deployment:** Docker Compose.
@@ -119,5 +119,17 @@ Systemet skal hostes på egne servere og bygges som en Single Page Application (
 - PostgreSQL kjører som egen databasetjeneste.
 - Tjenestene kjøres i Docker-containere på egne servere.
 
+## Github repo
+- Legge github repo i fribyte sitt?
+
 **Mål:** Et enkelt og brukervennlig bookingsystem som føles som Google Kalender, men automatisk håndhever Velferdstingets bookingregler.
 
+## Fremdriftsplan
+- Faste tider / rom
+- Mangeee organisasjoner
+- iCal 
+- SpringSecurity
+- Innlogging (google konto, github?, osv....)
+- Rom og tilganger må kunne takle mange organisasjoner og mange rom enklere.
+- Gjerne ikke se 100% likt ut som google kalender, men ha en enkel og oversiktlig kalender som er lett å bruke.
+- Klikk and drop tider for å flytte bookinger.

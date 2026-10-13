@@ -1,0 +1,192 @@
+import type {
+  DateSelectArg,
+  DatesSetArg,
+  DayHeaderContentArg,
+  EventClickArg,
+  EventContentArg,
+  EventInput,
+  EventMountArg,
+} from '@fullcalendar/core'
+import nbLocale from '@fullcalendar/core/locales/nb'
+import dayGridPlugin from '@fullcalendar/daygrid'
+import interactionPlugin from '@fullcalendar/interaction'
+import FullCalendar from '@fullcalendar/react'
+import timeGridPlugin from '@fullcalendar/timegrid'
+import { Hourglass } from 'lucide-react'
+import type { Ref } from 'react'
+import { cn } from '../../lib/cn'
+import { tint } from '../../lib/color'
+import type { Booking, Organization, Room } from '../../types'
+
+export type CalendarViewType = 'timeGridDay' | 'timeGridWeek' | 'dayGridMonth'
+
+interface EventProps {
+  booking: Booking
+  room: Room
+  organization?: Organization
+}
+
+interface BookingCalendarProps {
+  calendarRef: Ref<FullCalendar>
+  initialView: CalendarViewType
+  bookings: Booking[]
+  rooms: Room[]
+  organizations: Organization[]
+  onSelectRange: (start: Date, end: Date) => void
+  onBookingClick: (id: string) => void
+  onDatesSet: (arg: DatesSetArg) => void
+  onDayClick: (date: Date) => void
+}
+
+const plugins = [timeGridPlugin, dayGridPlugin, interactionPlugin]
+const timeFormat = { hour: '2-digit', minute: '2-digit', hour12: false } as const
+const eventTimeFormat = { ...timeFormat, separator: '–' } as const
+
+export function BookingCalendar({
+  calendarRef,
+  initialView,
+  bookings,
+  rooms,
+  organizations,
+  onSelectRange,
+  onBookingClick,
+  onDatesSet,
+  onDayClick,
+}: BookingCalendarProps) {
+  const events: EventInput[] = bookings.flatMap((booking) => {
+    const room = rooms.find((r) => r.id === booking.roomId)
+    if (!room) return []
+    const pending = booking.status === 'PENDING'
+    const props: EventProps = {
+      booking,
+      room,
+      organization: organizations.find((o) => o.id === booking.organizationId),
+    }
+    return {
+      id: booking.id,
+      title: booking.title,
+      start: booking.start,
+      end: booking.end,
+      backgroundColor: pending ? tint(room.color, 0.1) : room.color,
+      borderColor: room.color,
+      textColor: pending ? room.color : '#fff',
+      classNames: pending ? ['ev-pending'] : [],
+      extendedProps: props,
+    }
+  })
+
+  const handleSelect = (info: DateSelectArg) => {
+    let start = info.start
+    let end = info.end
+    if (info.allDay) {
+      // Month view selects whole days; suggest a one-hour slot on the first day.
+      start = new Date(info.start)
+      start.setHours(9, 0, 0, 0)
+      end = new Date(start.getTime() + 3_600_000)
+    } else if (end.getTime() - start.getTime() < 30 * 60_000) {
+      // A single click selects one snap interval; default to one hour like Google Calendar.
+      end = new Date(start.getTime() + 3_600_000)
+    }
+    info.view.calendar.unselect()
+    onSelectRange(start, end)
+  }
+
+  return (
+    <FullCalendar
+      ref={calendarRef}
+      plugins={plugins}
+      initialView={initialView}
+      locale={nbLocale}
+      headerToolbar={false}
+      height="100%"
+      firstDay={1}
+      nowIndicator
+      selectable
+      selectMirror
+      allDaySlot={false}
+      slotMinTime="06:00:00"
+      slotMaxTime="24:00:00"
+      scrollTime="07:30:00"
+      slotDuration="00:30:00"
+      snapDuration="00:15:00"
+      slotLabelInterval="01:00"
+      slotLabelFormat={timeFormat}
+      eventTimeFormat={eventTimeFormat}
+      eventDisplay="block"
+      dayMaxEvents={3}
+      expandRows
+      navLinks
+      navLinkDayClick={onDayClick}
+      events={events}
+      select={handleSelect}
+      eventClick={(arg: EventClickArg) => {
+        arg.jsEvent.preventDefault()
+        onBookingClick(arg.event.id)
+      }}
+      eventDidMount={(arg: EventMountArg) => {
+        arg.el.style.setProperty('--room-color', (arg.event.extendedProps as EventProps).room.color)
+      }}
+      datesSet={onDatesSet}
+      dayHeaderContent={renderDayHeader}
+      dayCellContent={(arg) => arg.date.getDate()}
+      eventContent={renderEvent}
+    />
+  )
+}
+
+function renderDayHeader(arg: DayHeaderContentArg) {
+  const weekday = arg.date.toLocaleDateString('nb-NO', { weekday: 'short' }).replace('.', '')
+  if (arg.view.type === 'dayGridMonth') {
+    return <span className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">{weekday}</span>
+  }
+  return (
+    <span className="flex flex-col items-center gap-0.5">
+      <span
+        className={cn(
+          'text-[11px] font-semibold tracking-wide uppercase',
+          arg.isToday ? 'text-blue-700' : 'text-slate-500',
+        )}
+      >
+        {weekday}
+      </span>
+      <span
+        className={cn(
+          'flex size-9 items-center justify-center rounded-full text-xl transition-colors',
+          arg.isToday ? 'bg-blue-600 font-medium text-white' : 'text-slate-800 hover:bg-slate-100',
+        )}
+      >
+        {arg.date.getDate()}
+      </span>
+    </span>
+  )
+}
+
+function renderEvent(arg: EventContentArg) {
+  const { booking, room, organization } = arg.event.extendedProps as EventProps
+  const pending = booking.status === 'PENDING'
+  const label = `${booking.title}, ${arg.timeText}, ${room.name}${pending ? ', venter på godkjenning' : ''}`
+
+  if (arg.view.type === 'dayGridMonth') {
+    return (
+      <span className="flex min-w-0 items-center gap-1 text-xs" aria-label={label}>
+        {pending && <Hourglass className="size-3 shrink-0" />}
+        <span className="shrink-0 opacity-90">{arg.timeText}</span>
+        <span className="truncate font-medium">{booking.title}</span>
+      </span>
+    )
+  }
+
+  return (
+    <span className="flex h-full min-w-0 flex-col overflow-hidden text-xs leading-snug" aria-label={label}>
+      <span className="flex items-center gap-1 font-semibold">
+        {pending && <Hourglass className="size-3 shrink-0" />}
+        <span className="truncate">{booking.title}</span>
+      </span>
+      <span className="truncate opacity-90">{arg.timeText}</span>
+      <span className="truncate opacity-85">
+        {room.name}
+        {organization && ` · ${organization.name}`}
+      </span>
+    </span>
+  )
+}
