@@ -15,6 +15,7 @@ const ME = {
   email: 'kari@example.no',
   displayName: 'Kari Nordmann',
   globalRole: 'USER',
+  mustChangePassword: false,
   memberships: [{ organizationId: 'org-a', organizationName: 'Organisasjon A', role: 'MEMBER' }],
 }
 
@@ -99,7 +100,14 @@ describe('API data source', () => {
     })
 
     expect(data.users).toEqual([
-      { id: 'u-kari', name: 'Kari Nordmann', email: 'kari@example.no', role: 'USER', organizationIds: ['org-a'] },
+      {
+        id: 'u-kari',
+        name: 'Kari Nordmann',
+        email: 'kari@example.no',
+        role: 'USER',
+        organizationIds: ['org-a'],
+        orgAdminOrganizationIds: [],
+      },
     ])
     expect(data.rooms[0].permissions).toEqual({ 'org-a': 'DIRECT' })
     expect(data.rooms[0].description).toBe('')
@@ -112,6 +120,24 @@ describe('API data source', () => {
     expect(Date.parse(query.get('to')!) - Date.parse(query.get('from')!)).toBe(62 * 24 * 60 * 60 * 1000)
     // Admin-only endpoints are not requested for ordinary users.
     expect(calls.some((c) => c.path.startsWith('/api/admin') || c.path === '/api/bookings/requests')).toBe(false)
+  })
+
+  it('treats SYSTEM_ADMIN as an administrator and loads the admin endpoints', async () => {
+    const admin = { ...ME, id: 'u-admin', globalRole: 'SYSTEM_ADMIN', memberships: [] }
+    const { client, calls } = fakeServer({
+      'GET /api/me': () => json(200, admin),
+      'GET /api/rooms': () => json(200, []),
+      'GET /api/organizations': () => json(200, []),
+      'GET /api/bookings': () => json(200, []),
+      'GET /api/bookings/mine': () => json(200, []),
+      'GET /api/bookings/requests': () => json(200, []),
+      'GET /api/admin/users': () => json(200, [admin]),
+    })
+
+    const data = await createApiDataSource(client).load({ start: '2030-01-01T00:00:00.000Z', end: '2030-01-08T00:00:00.000Z' })
+
+    expect(data.users).toEqual([expect.objectContaining({ id: 'u-admin', role: 'ADMIN' })])
+    expect(calls.some((c) => c.path === '/api/admin/users')).toBe(true)
   })
 
   it('sends the CSRF token and the booking version with decisions', async () => {

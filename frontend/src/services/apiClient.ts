@@ -26,6 +26,7 @@ const KNOWN_CODES = new Set<ErrorCode>([
   'VERSION_CONFLICT',
   'RULE_VIOLATION',
   'UNAUTHENTICATED',
+  'PASSWORD_CHANGE_REQUIRED',
 ])
 
 export interface ApiClientDeps {
@@ -101,6 +102,14 @@ export function createApiClient(
     return res
   }
 
+  function writeJson(method: string, path: string, body?: unknown): Promise<Response> {
+    return write(path, {
+      method,
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  }
+
   async function json<T>(res: Response): Promise<T> {
     if (!res.ok) throw await toError(res)
     return (await res.json()) as T
@@ -111,16 +120,25 @@ export function createApiClient(
       return json<T>(await send(path, { method: 'GET', headers: { Accept: 'application/json' } }))
     },
 
-    async post<T>(path: string, body: unknown): Promise<T> {
-      const res = await write(path, {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      return json<T>(res)
+    async post<T>(path: string, body?: unknown): Promise<T> {
+      return json<T>(await writeJson('POST', path, body))
     },
 
-    /** Form login (`/api/auth/login`). Wrong credentials and disabled login both give 401. */
+    async put<T>(path: string, body: unknown): Promise<T> {
+      return json<T>(await writeJson('PUT', path, body))
+    },
+
+    async patch<T>(path: string, body: unknown): Promise<T> {
+      return json<T>(await writeJson('PATCH', path, body))
+    },
+
+    /** POST or DELETE that answers 204 No Content. */
+    async send(method: 'POST' | 'DELETE', path: string, body?: unknown): Promise<void> {
+      const res = await writeJson(method, path, body)
+      if (!res.ok) throw await toError(res)
+    },
+
+    /** Form login (`/api/auth/login`). Wrong credentials and disabled accounts both give 401; too many failures 429. */
     async login(email: string, password: string): Promise<void> {
       const res = await write('/api/auth/login', {
         method: 'POST',
@@ -128,6 +146,9 @@ export function createApiClient(
         body: new URLSearchParams({ email, password }).toString(),
       })
       if (res.status === 401) throw new BookingError('UNAUTHENTICATED', 'Feil e-post eller passord.')
+      if (res.status === 429) {
+        throw new BookingError('FORBIDDEN', 'For mange mislykkede forsøk. Vent et kvarter og prøv igjen.')
+      }
       if (!res.ok) throw await toError(res)
     },
 

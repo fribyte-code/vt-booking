@@ -25,7 +25,7 @@ These are decisions that need confirmation from Velferdstinget Vest. Each one ha
 
 ## A. Must decide before implementation
 
-These affect identity, data protection, or foundations that are expensive to change. They block Phase 1–2 work (see `DEVELOPMENT_PLAN.md`).
+These affect identity, data protection, or foundations that are expensive to change. Q-04, Q-07, Q-21 and Q-24 are decided; Q-30 is withdrawn. They block Phase 1–2 work (see `DEVELOPMENT_PLAN.md`).
 
 ### Q-01 Backend technology and long-term maintainers
 
@@ -36,37 +36,28 @@ These affect identity, data protection, or foundations that are expensive to cha
   - If the realistic maintainers after handover are Python-only, choose FastAPI, with the mandatory compensations listed in `ARCHITECTURE.md` §3.
   - Decide before Phase 1 starts.
 
-### Q-07 Login providers and who may log in
+### Q-07 Login providers and who may log in — **DECIDED 2026-10-13**
 
-- **Question:** Is **Feide + Google** acceptable? Does anyone need something else, such as staff with only a Microsoft account, or external volunteers?
-- **Question:** May *anyone* with Feide or Google log in and view the calendar, or only invited users?
-- **Default:**
-  - Feide (primary) and Google (secondary).
-  - Anyone may log in. Booking requires a membership, which comes from an invitation.
+- **Decision:**
+  - Email and password is the primary login. Optional Google account linking later. **No Feide.**
+  - **Invite-only.** Accounts are created only through the one-time CLI bootstrap (first `SYSTEM_ADMIN`) or an administrator invitation. No self-registration, no account creation on first external login.
 - **Consequence:**
-  - Open login means the calendar's titles and organization names are visible to any Feide or Google user (see Q-05).
-  - Invite-only login is a small switch: reject first-time logins without a pending invitation. It makes onboarding slightly harder.
-  - Email magic link stays a Phase 6 fallback.
+  - We own password hashing, reset and brute-force protection (`ARCHITECTURE.md` §4). SMTP is now required for the pilot (Q-17).
+  - Only invited users can see the calendar.
 
-### Q-30 Feide service registration: who owns it, and which institutions?
+### Q-30 Feide service registration — **WITHDRAWN 2026-10-13**
 
-- **Question:** Who at Velferdstinget (or the host organization) will register the service in Feide's customer portal and own the agreement?
-- **Question:** Which institutions' students must be able to log in?
-- **Background:**
-  - Each institution must **activate** the service individually before its users can log in via Feide ([Feide docs](https://docs.feide.no/service_providers/manage/access_to_services/activation.html)).
-  - This has **calendar lead time** outside our control.
-- **Default:** Start registration in Phase 0. Google login covers everyone until activation is complete.
-- **Consequence:** If Feide is delayed, the pilot runs on Google only. The code doesn't change.
+Feide is not used (Q-07). No registration or institution activation is needed.
 
-### Q-04 Organization administrators
+### Q-04 Organization administrators — **DECIDED 2026-10-13**
 
-- **Question:** Should each organization have its own administrators (`ORG_ADMIN`) who manage their own members?
-- **Default:** **Yes.**
-  - ORG_ADMINs invite and remove members and set member roles in their own organization only.
-  - Velferdstinget admins create organizations, appoint the first ORG_ADMIN, and manage rooms and permissions.
+- **Decision:** **Yes.**
+  - ORG_ADMINs invite members, appoint and remove other ORG_ADMINs, and remove members, in their own organization only.
+  - `SYSTEM_ADMIN`s have full access: rooms, organizations, users, global roles, permissions and all bookings.
+  - **Only `SYSTEM_ADMIN` approves or rejects booking requests** for now.
 - **Consequence:**
-  - Without this, Velferdstinget staff must manage every member of every organization, which doesn't scale to hundreds of organizations.
-  - ORG_ADMINs **cannot** change room permissions or approve requests.
+  - ORG_ADMINs **cannot** change room permissions, approve requests, or change a user's email, status or password.
+  - Delegating approval later (Q-19) is an authorization change, not a schema change.
 
 ### Q-05 Calendar visibility
 
@@ -102,7 +93,7 @@ These affect identity, data protection, or foundations that are expensive to cha
 - **Question:** Where will it run (the README mentions fribyte)? What is the hostname? Is there an existing reverse proxy, TLS setup, mail relay, backup target or monitoring we should use?
 - **Default:** A single VM with Docker Compose. Our own Nginx with Let's Encrypt. Backups to a separate machine via restic.
 - **Consequence:**
-  - The hostname is needed for OIDC redirect URIs (Feide and Google registration) and for ICS URLs, which are hard to change once users subscribe.
+  - The hostname is needed for invitation and reset links in emails, the Google OIDC redirect URI (if linking is enabled), and ICS URLs, which are hard to change once users subscribe.
   - The existing infrastructure decides whether `web` terminates TLS itself.
 
 ---
@@ -193,12 +184,12 @@ Defaults, all configurable globally and per room or organization:
   - In-app notifications always.
 - **Consequence:**
   - Needs SMTP credentials and SPF/DKIM for the sender domain.
-  - Without them, the pilot runs on in-app notifications only.
+  - **Required for the pilot** (Q-07): invitations and password resets are sent by email. Notifications can stay in-app only if needed.
 
-### Q-21 Session lifetime
+### Q-21 Session lifetime — **DECIDED 2026-10-13**
 
-- **Default:** 8 hours idle, 7 days absolute.
-- **Consequence:** Shorter is safer but means more logins. Re-login is usually one click via Feide or Google SSO.
+- **Decision:** 8 hours idle, 7 days absolute. Invitation links 72 hours, password reset links 30 minutes.
+- **Consequence:** Re-login means typing the password (or Google, once linked).
 
 ### Q-20 Backup objectives
 
@@ -220,7 +211,8 @@ Defaults, all configurable globally and per room or organization:
 
 ### Q-24 Who are the Velferdstinget admins, and how many?
 
-- **Default:** A small number (2–5) of global admins. The initial admins are set by environment configuration at first deploy.
+- **Decided (bootstrap):** the first `SYSTEM_ADMIN` is created with a one-time CLI command on the server, which refuses to run once any `SYSTEM_ADMIN` exists. Further admins are invited by that admin.
+- **Default:** A small number (2–5) of `SYSTEM_ADMIN`s.
 - **Consequence:** If many people approve requests for different buildings, see Q-19.
 
 ### Q-25 Language

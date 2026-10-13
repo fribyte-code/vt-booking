@@ -50,19 +50,26 @@ The REST API consumed by the React SPA. **Status:** proposal for review. Labels 
 | **A** | any authenticated user |
 | **M(org)** | current member of that organization |
 | **OA(org)** | ORG_ADMIN of that organization |
-| **ADM** | global admin |
+| **ADM** | `SYSTEM_ADMIN` |
 | **owner** | the booking's requester, while still a member of its org |
 
 ### 2.1 Authentication
 
+Accounts exist only through the CLI bootstrap or an invitation (`ARCHITECTURE.md` §4). There is no sign-up endpoint. All POSTs need the CSRF header. Endpoints marked *limited* are rate-limited per IP and per email (`429` with `Retry-After`).
+
 | Method | Path | Who | Purpose |
 |---|---|---|---|
-| GET | `/api/v1/auth/providers` | public | Enabled login providers, for rendering buttons: `[{ "id": "feide", "name": "Feide" }, …]` |
-| GET | `/oauth2/authorization/{provider}` | public | Starts the OIDC login (Spring Security) |
-| GET | `/login/oauth2/code/{provider}` | public | OIDC callback, creates the session, redirects to the SPA (`/`, or a validated same-origin `returnTo`) |
-| POST | `/api/v1/auth/logout` | A | Invalidates the session. Returns 204. |
 | GET | `/api/v1/auth/csrf` | public | Ensures the `XSRF-TOKEN` cookie is set (the SPA calls it on startup) |
-| *(Phase 6, optional)* POST | `/api/v1/auth/email-link` | public, rate-limited | Requests a magic login link. Always returns 202, so it doesn't reveal whether an account exists. |
+| GET | `/api/v1/auth/providers` | public | `{ "password": true, "google": false }`. Google is true only when linking is configured. |
+| POST | `/api/v1/auth/login` | public, *limited* | `{ email, password }` → `204` and a new session, or `401` with one generic message for unknown, wrong, `INVITED` and `DISABLED` |
+| POST | `/api/v1/auth/logout` | A | Invalidates the session. Returns 204. |
+| POST | `/api/v1/auth/activate` | public, *limited* | `{ token, password }`. Sets the password, `INVITED → ACTIVE`, consumes the token, logs in. `410` if expired, used or revoked. |
+| POST | `/api/v1/auth/password-reset` | public, *limited* | `{ email }` → always `202`, same body. Emails a 30-minute link to `ACTIVE` users only. |
+| POST | `/api/v1/auth/password-reset/confirm` | public, *limited* | `{ token, password }`. Sets the password, deletes all the user's sessions. Does not log in. |
+| *(Phase 6)* GET | `/oauth2/authorization/google` | public | Starts a Google login, or a link if the session holds a link intent |
+| *(Phase 6)* GET | `/login/oauth2/code/google` | public | Callback. Login only if `(google, sub)` is already linked; never creates or matches by email. |
+
+Password rules on activate, confirm and change: at least 8 characters (`400 WEAK_PASSWORD`).
 
 ### 2.2 Current user
 
@@ -70,6 +77,9 @@ The REST API consumed by the React SPA. **Status:** proposal for review. Labels 
 |---|---|---|---|
 | GET | `/api/v1/me` | A | Profile, global role, memberships with org role, and enabled features. **Replaces `currentUser`.** |
 | PATCH | `/api/v1/me` | A | `{ displayName }` |
+| POST | `/api/v1/me/password` | A, *limited* | `{ currentPassword, newPassword }`. Deletes the user's other sessions and emails a notice. |
+| *(Phase 6)* POST | `/api/v1/me/identities/google/link` | A | `{ currentPassword }` (step-up). Stores a link intent and returns the URL to start the Google flow. |
+| *(Phase 6)* DELETE | `/api/v1/me/identities/google` | A | Unlink. Allowed only while the user has a password. |
 | GET | `/api/v1/me/bookable-rooms?organizationId=` | M(org) | Effective permission per active room for that org. Drives the room picker and badges. Replaces `getPermission` on full data. |
 | GET | `/api/v1/me/bookings?tab=upcoming\|pending\|rejected\|past&page` | A | My Bookings. Tabs as in `MyBookingsPage.tsx`. |
 | GET | `/api/v1/me/notifications?unread=true` | A | Bell contents |
@@ -85,6 +95,7 @@ Example `GET /api/v1/me`:
 {
   "id": "0192…", "displayName": "Kari Nordmann", "email": "kari@uib.no",
   "globalRole": "USER",
+  "linkedProviders": [],
   "memberships": [
     { "organization": { "id": "0193…", "name": "Organisasjon A" }, "role": "ORG_ADMIN", "expiresAt": null }
   ]
@@ -234,22 +245,19 @@ Series response (and preview):
 | POST | `/api/v1/organizations/{id}/archive` | ADM | Archive, with lifecycle effects (`ARCHITECTURE.md` §6) |
 | POST | `/api/v1/organizations/{id}/restore` | ADM | Un-archive |
 | GET | `/api/v1/organizations/{id}/members?q&page` | M(org): names only. OA(org), ADM: with emails. | Member list |
-| POST | `/api/v1/organizations/{id}/members` | OA(org), ADM | Add an existing user by email: `{ email, role, expiresAt? }`. Returns 404 if no such user; then use an invitation. |
-| PATCH | `/api/v1/organizations/{id}/members/{userId}` | OA(org), ADM | `{ role, expiresAt }`. An OA cannot demote the **last** ORG_ADMIN (`409`). |
-| DELETE | `/api/v1/organizations/{id}/members/{userId}` | OA(org), ADM; also the user themselves (leave) | Auto-rejects that user's pending requests for the org |
-| GET | `/api/v1/organizations/{id}/invitations` | OA(org), ADM | Open invitations |
-| POST | `/api/v1/organizations/{id}/invitations` | OA(org), ADM | `{ email, role }`. Sends the email link. Rate-limited (max 50 per org per day). |
-| DELETE | `/api/v1/organizations/{id}/invitations/{invId}` | OA(org), ADM | Revoke |
-| GET | `/api/v1/invitations/{token}` | A | Shows the org name and role for a confirmation page |
-| POST | `/api/v1/invitations/{token}/accept` | A | Creates the membership. Single use; returns 410 if expired. |
+| POST | `/api/v1/organizations/{id}/members` | OA(org), ADM | **Invite:** `{ email, displayName, role: MEMBER\|ORG_ADMIN, expiresAt? }`. New email: creates an `INVITED` user, the membership and a 72-hour activation link. Existing user: adds the membership and notifies them. `409` if already a member. Rate-limited (max 50 per org per day). |
+| PATCH | `/api/v1/organizations/{id}/members/{userId}` | OA(org), ADM | `{ role, expiresAt }`. OA may appoint or demote ORG_ADMINs. Only ADM may demote or remove the **last** ORG_ADMIN (`409 LAST_ORG_ADMIN`) or change a `SYSTEM_ADMIN`'s membership. |
+| DELETE | `/api/v1/organizations/{id}/members/{userId}` | OA(org), ADM; also the user themselves (leave) | Removes the membership only, never the account. Auto-rejects that user's pending requests for the org. Same last-ORG_ADMIN guard. |
+| POST | `/api/v1/organizations/{id}/members/{userId}/resend-invitation` | OA(org), ADM | Only for `INVITED` users. Voids the old link and sends a new 72-hour link. |
 | GET | `/api/v1/organizations/{id}/room-access` | M(org), ADM | Effective permission per room for this org |
 | GET | `/api/v1/organizations/{id}/bookings?from&to&status&page` | M(org), ADM | The org's bookings |
 
 **Escalation guards:**
 
-- OA(org) can only grant `MEMBER` or `ORG_ADMIN` **in its own org**.
-- OA(org) cannot change `globalRole`, room access or quotas.
-- Role changes are audited.
+- OA(org) can only grant `MEMBER` or `ORG_ADMIN` **in its own org**. The org comes from the path and is checked against the actor's own `ORG_ADMIN` membership in the database.
+- Member DTOs have no `globalRole`, `status`, `password` or `organizationId` field. For an existing user, `displayName` is ignored.
+- OA(org) cannot change `globalRole`, room access, quotas, or a user's email, status or password, and cannot trigger a reset for someone else.
+- Role and membership changes are audited.
 
 ### 2.7 Rooms and permissions
 
@@ -285,8 +293,10 @@ Series response (and preview):
 | Method | Path | Who | Purpose |
 |---|---|---|---|
 | GET | `/api/v1/admin/users?q&role&status&organizationId&page` | ADM | The user directory, admin only (RISK-03) |
-| GET | `/api/v1/admin/users/{id}` | ADM | Includes memberships and identities (provider only, not the subject) |
-| PATCH | `/api/v1/admin/users/{id}` | ADM | `{ globalRole, status }`. An admin cannot demote themselves if they are the last admin. Disabling kills sessions and feeds. |
+| GET | `/api/v1/admin/users/{id}` | ADM | Includes status, memberships and linked providers (not the subject) |
+| POST | `/api/v1/admin/users` | ADM | Invite a user with no membership, or with `globalRole: SYSTEM_ADMIN`: `{ email, displayName, globalRole }`. Sends a 72-hour activation link. |
+| PATCH | `/api/v1/admin/users/{id}` | ADM | `{ email, displayName, globalRole, status }`. The last active `SYSTEM_ADMIN` cannot be demoted or disabled; nobody can disable themselves. Disabling or a role change deletes sessions. Disabling also voids tokens and feeds. An email change voids tokens. |
+| POST | `/api/v1/admin/users/{id}/resend-invitation` | ADM | For `INVITED` users |
 | POST | `/api/v1/admin/users/{id}/anonymize` | ADM | GDPR erasure, with an explicit confirmation field |
 | GET | `/api/v1/admin/settings` / PUT | ADM | `system_settings` |
 | GET | `/api/v1/admin/audit-log?entityType&entityId&actorId&action&from&to&before&size` | ADM | Audit viewer |
@@ -338,12 +348,16 @@ This is the source of truth for the automated authorization matrix tests (C-18).
 | Cancel bA after U1 is removed from A | 403 for U1 (VULN-07) | 200 | 403* | 403* | 200 |
 | Approve or reject any request | 403 | 403 | 403 | 403 | 200 |
 | Approve after the org's permission → NONE | — | — | — | — | 409 / 403 NO_PERMISSION (VULN-04) |
-| Manage members of A | 403 | 200 | 403 | 403 | 200 |
+| Invite to A / set role in A | 403 | 200 | 403 | 403 | 200 |
+| U2 appoints U1 ORG_ADMIN of A | — | 200 | — | — | 200 |
+| U2 removes the last ORG_ADMIN of A (self) | — | 409 | — | — | 200 |
+| Change U1's email, status or password | 403 | 403 | 403 | 403 | 200 (not password) |
+| Set `globalRole` via member endpoint body | — | ignored/400 | — | — | ignored/400 |
 | Make self ORG_ADMIN of B | 403 | 403 | 403 | 403 | 200 |
 | Change room access | 403 | 403 | 403 | 403 | 200 |
 | GET `/admin/users` | 403 | 403 | 403 | 403 | 200 |
 | Body contains `"requestedById": "<ADM id>"` | ignored | ignored | ignored | ignored | ignored |
-| Unauthenticated, any `/api/v1/**` except providers, csrf and health | 401 | | | | |
+| Unauthenticated, any `/api/v1/**` except the public `/auth/**` endpoints and health | 401 | | | | |
 
 \* 403 while bA is `APPROVED`, because approved bookings are visible to everyone. 404 while it is `PENDING`, because it is invisible to them.
 
@@ -417,5 +431,5 @@ All errors use `application/problem+json` (Spring's `ProblemDetail`):
 | `rejectBooking(actorId, id, comment)` | `POST /bookings/{id}/reject` `{ version, reason }` |
 | `cancelBooking(actorId, id)` | `POST /bookings/{id}/cancel` `{ version }` |
 | `markDecisionsSeen(userId)` | `POST /me/notifications/read` `{ all: true }` |
-| `resetDemoData()` | **Removed.** Dev data comes from the seed migration. |
+| `resetDemoData()` | **Demo build only.** The API has no seed or reset; data is created through the UI. |
 | `evaluateBooking()` (UI feedback) | `POST /bookings/preview`, plus small client prechecks |

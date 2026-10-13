@@ -8,7 +8,8 @@ interface MeResponse {
   id: string
   email: string
   displayName: string
-  globalRole: 'USER' | 'ADMIN'
+  globalRole: 'USER' | 'SYSTEM_ADMIN'
+  mustChangePassword: boolean
   memberships: { organizationId: string; organizationName: string; role: string }[]
 }
 
@@ -47,8 +48,8 @@ interface AdminUserResponse {
   id: string
   email: string
   displayName: string
-  globalRole: 'USER' | 'ADMIN'
-  memberships: { organizationId: string }[]
+  globalRole: 'USER' | 'SYSTEM_ADMIN'
+  memberships: { organizationId: string; role: string }[]
 }
 
 /** The API caps calendar queries at 62 days. */
@@ -68,8 +69,9 @@ function toUser(me: MeResponse | AdminUserResponse): User {
     id: me.id,
     name: me.displayName,
     email: me.email,
-    role: me.globalRole,
+    role: me.globalRole === 'SYSTEM_ADMIN' ? 'ADMIN' : 'USER',
     organizationIds: me.memberships.map((m) => m.organizationId),
+    orgAdminOrganizationIds: me.memberships.filter((m) => m.role === 'ORG_ADMIN').map((m) => m.organizationId),
   }
 }
 
@@ -119,6 +121,7 @@ function clamp(range: DateRange): DateRange {
 /** The Spring Boot API. Identity, permissions and every booking rule are enforced there. */
 export function createApiDataSource(api: ApiClient = createApiClient()): DataSource {
   let userId: string | null = null
+  let mustChangePassword = false
 
   const decide = (booking: Booking, action: 'approve' | 'reject' | 'cancel', extra: object = {}) =>
     api
@@ -131,7 +134,9 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
   return {
     async getSessionUserId() {
       try {
-        userId = (await api.get<MeResponse>('/api/me')).id
+        const me = await api.get<MeResponse>('/api/me')
+        userId = me.id
+        mustChangePassword = me.mustChangePassword
       } catch (err) {
         if ((err as { code?: string }).code === 'UNAUTHENTICATED') return (userId = null)
         throw err
@@ -142,7 +147,7 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
     async load(range) {
       const me = await api.get<MeResponse>('/api/me')
       userId = me.id
-      const isAdmin = me.globalRole === 'ADMIN'
+      const isAdmin = me.globalRole === 'SYSTEM_ADMIN'
       const { start, end } = clamp(range)
       const query = new URLSearchParams({ from: start, to: end })
 
@@ -171,7 +176,7 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
 
       const meUser = toUser(me)
       return {
-        users: isAdmin ? users.map(toUser) : [meUser],
+        users: isAdmin ? users.map((u) => (u.id === me.id ? meUser : toUser(u))) : [meUser],
         organizations: [...orgs.values()],
         rooms: rooms.map(toRoom),
         bookings: [...bookings.values()],
@@ -202,6 +207,11 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
       async logout() {
         await api.logout()
         userId = null
+      },
+      passwordChangeRequired: () => mustChangePassword,
+      async changePassword(currentPassword, newPassword) {
+        await api.send('POST', '/api/me/password', { currentPassword, newPassword })
+        mustChangePassword = false
       },
     },
   }

@@ -1,6 +1,6 @@
 # Development Plan
 
-The roadmap from the frontend prototype to a production system. **Status:** proposal for review. Labels (REQ/REC/ASM) are explained in [`ARCHITECTURE.md`](ARCHITECTURE.md).
+The roadmap from the frontend prototype to a production system. **Status:** proposal for review. The authentication and authorization track below is decided (2026-10-13) and takes precedence over the phase descriptions where they differ. Labels (REQ/REC/ASM) are explained in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 **Guiding priority (REQ):** a *secure, working booking system* before advanced features.
 
@@ -13,7 +13,7 @@ The roadmap from the frontend prototype to a production system. **Status:** prop
 
 We reorganized the suggested phases. There are three changes:
 
-1. A short **Phase 0** handles the decisions with long lead times (Feide, hosting) and the audit's quick fixes.
+1. A short **Phase 0** handles the decisions with long lead times (hosting, SMTP) and the audit's quick fixes.
 2. **Deployment work starts in Phase 1** (staging from week one), not at the end. That avoids late infrastructure surprises.
 3. **Basic booking limits move into Phase 3.** They are security fixes (VULN-03, VULN-05), not "advanced features".
 
@@ -32,11 +32,39 @@ We reorganized the suggested phases. There are three changes:
 
 ```text
 P0 ──▶ P1 ──▶ P2 ──▶ P3 ──▶ P4 (pilot) ──▶ P5 ──▶ P6
- │              ▲                    ▲
- └─ Feide registration & institution activation (external lead time) ──┘
+ │                                   ▲
+ └─ hostname and SMTP relay (external lead time) ──┘
 ```
 
 Phases 5 and 6 are largely independent of each other and can overlap if there are two developers.
+
+---
+
+## Authentication and authorization track (decided 2026-10-13)
+
+The decisions are in `ARCHITECTURE.md` §4–§5 and `OPEN_QUESTIONS.md` (Q-04, Q-07, Q-21, Q-24). This track replaces the identity work previously spread over Phases 0–2 and 6, and it is the next work to do.
+
+**Where the code is today (`backend/`, `frontend/`)**
+
+- Login is `DevUserDetailsService`: every database user logs in with one shared password, only under the `dev` profile. Production cannot log in at all.
+- `db/dev/R__dev_seed.sql` and `DevSampleBookings` seed fake users, organizations, rooms and bookings into PostgreSQL. `make e2e` (`apiWorkflow`) relies on them.
+- `users.global_role` is `USER`/`ADMIN`, with no status or password columns. `memberships.role` already has `MEMBER`/`ORG_ADMIN`, but ORG_ADMIN is used only for cancelling.
+- `CurrentUser` resolves the actor by email. Sessions are in memory. `csrf.spa()` and the cookie flags are in place.
+- Endpoints are read-only apart from bookings. No user, organization, membership or room writes exist.
+
+**Steps.** Each one leaves the application working and is reviewed by `security-reviewer` before merging.
+
+| Step | Content | Done when |
+|---|---|---|
+| **A1** Password login and CLI bootstrap (replaces dev login) | Migration V3: `users.status`, `password_hash`, `password_changed_at`, `last_login_at`; `ADMIN → SYSTEM_ADMIN`. DB-backed `UserDetailsService` with Argon2id, only `ACTIVE` users. Session principal = user ID, and `CurrentUser` resolves by ID. `bootstrap-admin` CLI. **Delete** `DevUserDetailsService`, `DevAuthProperties`, `app.dev-auth.*`, `db/dev`, `DevSampleBookings` and their tests. Tests build their own fixtures. Update the READMEs, `CLAUDE.md`, the `Makefile` (`make bootstrap-admin`) and `make e2e`. | Fresh DB → bootstrap → log in as `SYSTEM_ADMIN`. No code path accepts a shared password. A grep finds no seed users in `src/main`. |
+| **A2** Session and brute-force hardening | Spring Session JDBC, `__Host-SESSION`, 8 h idle and 7 d absolute, deleting sessions on password change. Bucket4j per IP and email on login. Generic `401`. `audit_log` table and writer (`LOGIN`, `LOGIN_FAILED`, `BOOTSTRAP_ADMIN`). | Restarting the API keeps sessions. 6th failed login → `429`. Session older than 7 d → `401`. |
+| **A3** Email, invitation and reset | `auth_tokens`, `email_outbox` with a scheduled SMTP sender, Mailpit in dev Compose. Activate, password reset (request and confirm), change password. Rate limits on all of them. | An invited user activates within 72 h; the link fails after use or expiry. Reset works for 30 min, ends all sessions, and reveals nothing about unknown emails. |
+| **A4** Central authorization and admin APIs | `Authz` service. `SYSTEM_ADMIN`: users (invite, email, status, global role, resend), organizations, rooms (create, edit, disable), room access. `ORG_ADMIN`: invite members, appoint ORG_ADMINs, remove members, with the last-admin guards. Approval stays `SYSTEM_ADMIN` only. Authorization matrix and its coverage meta-test. | Matrix rows in `API_DESIGN.md` §3 pass, including the escalation rows. |
+| **A5** Frontend | Login form, "Glemt passord?", `/aktiver` and `/nytt-passord` pages, profile with change password, admin pages (users, organizations, rooms, access), org-admin member page. Account menu replaces `UserSwitcher` in API mode. | Full flow in the browser: bootstrap → invite ORG_ADMIN → ORG_ADMIN invites MEMBER → MEMBER books. |
+| **A6** E2E without seed data | Playwright and `apiWorkflow` set up their own data: run `bootstrap-admin` against a throwaway DB, invite users through the API, read activation links from the Mailpit API. | `make e2e` passes on an empty database. |
+| **A7** Google linking (optional, Phase 6) | `user_identities`, step-up with password, link and unlink from the profile, linked-only Google login. | A Google login without a link fails. Linking never matches by email. |
+
+**Demo isolation (all steps).** The standalone localStorage demo is the only place with mock users and example data. It never calls the API, and `IS_DEMO` code stays out of API builds. The backend has no demo or dev data path at all.
 
 ---
 
@@ -52,11 +80,11 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
 
 1. Review these documents with Velferdstinget and get answers to section A of `OPEN_QUESTIONS.md`:
    - Q-01 (backend and maintainers)
-   - Q-07 and Q-30 (login, Feide)
-   - Q-04, Q-05, Q-06 (org admins, visibility)
+   - Q-05, Q-06 (visibility). Q-04 and Q-07 are decided; Q-30 is withdrawn.
+   - Q-17 (SMTP relay), now required for invitations and resets
    - Q-08 (GDPR)
    - Q-09 (hosting, hostname)
-2. Start **Feide service registration** in the customer portal and contact the relevant institutions about activation. Create a **Google OAuth client** (internal testing mode).
+2. Arrange an **SMTP relay** and sender domain (SPF/DKIM) for invitation and reset emails.
 3. Repo hygiene (audit Phase 0):
    - Root `.gitignore` covering `.env*`, `*.pem`, `*.key`, `.vite/`, `node_modules/`, `dist/` (HYG-01).
    - Unstage `.vite/` (HYG-03).
@@ -71,7 +99,7 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
 **Acceptance criteria**
 
 - Section A questions are answered or explicitly accepted with defaults.
-- Feide registration has been submitted.
+- An SMTP relay is available, or a date for it is agreed.
 - CI is green on `main`.
 - Vitest has been upgraded.
 - PoC tests are in the repo.
@@ -79,7 +107,7 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
 **Risks**
 
 - Decisions drag on. *Mitigation:* the defaults are documented; proceed with them and change later where cheap.
-- Feide activation takes months. *Mitigation:* Google covers the pilot.
+- SMTP is delayed. *Mitigation:* the first admin is created with the CLI, which needs no email. Invitations can wait.
 
 ---
 
@@ -87,7 +115,7 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
 
 **Objectives**
 
-- A running backend skeleton with real authentication against a mock identity provider.
+- A running backend skeleton with real password authentication (track step A1).
 - The core schema with the double-booking guarantee proven by tests.
 - CI.
 - A staging environment that deploys automatically.
@@ -104,20 +132,20 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
    ```
 
 2. **Backend skeleton:**
-   - Spring Boot 4.x with web, security, oauth2-client, data-jpa, validation, actuator, flyway, session-jdbc and springdoc.
+   - Spring Boot 4.x with web, security, data-jpa, validation, actuator, flyway, session-jdbc and springdoc.
    - Package layout per `ARCHITECTURE.md` §3.
    - `Clock` bean.
    - `ProblemDetail` exception handler with the stable `code` field.
    - Request-ID filter and structured JSON logging.
 3. **Security baseline:**
-   - `oauth2Login` against **`mock-oauth2-server`** in dev and CI.
+   - Email/password login with Argon2id (track A1).
    - Spring Session JDBC.
    - `__Host-SESSION` cookie.
    - `csrf.spa()`.
    - Deny-by-default route config.
-   - `GET /api/v1/me`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/providers`.
-   - Admin bootstrap from the `INITIAL_ADMIN_EMAILS` environment variable.
-4. **Schema `V1`:** all core tables from `DATABASE_DESIGN.md` §3, the DB roles (`booking_owner`, `booking_app`), and a dev seed ported from `mockData.ts`.
+   - `GET /api/v1/me`, `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`.
+   - The `bootstrap-admin` CLI for the first `SYSTEM_ADMIN`.
+4. **Schema `V1`:** all core tables from `DATABASE_DESIGN.md` §3, and the DB roles (`booking_owner`, `booking_app`). **No seed data.**
 5. **Proof tests** (Testcontainers, PostgreSQL 18):
    - The exclusion constraint rejects overlap.
    - Back-to-back bookings are allowed.
@@ -130,15 +158,15 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
    - Staging server.
    - CI builds images and deploys `main` to staging.
 8. **Dev environment:**
-   - `compose.dev.yml` (db and the mock OIDC server).
-   - A Vite dev proxy for `/api`, `/oauth2` and `/login`.
+   - Dev Compose with db and Mailpit.
+   - A Vite dev proxy for `/api`.
    - A short `backend/README.md`.
 
 **Dependencies:** Q-01 (language). The Phase 0 hostname decision is needed for staging.
 
 **Acceptance criteria**
 
-- Login via the mock identity provider works in dev and CI. `GET /me` returns the user. Without a session, every other endpoint returns 401.
+- Password login for a bootstrapped admin works in dev and CI. `GET /me` returns the user. Without a session, every other endpoint returns 401.
 - A state-changing request without a CSRF header returns 403.
 - Flyway migrates an empty DB. Hibernate `validate` passes.
 - The concurrency test passes reliably in 50 consecutive CI runs.
@@ -155,19 +183,17 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
 
 **Objectives**
 
-- Real login with Google, and Feide when it is activated.
+- Invitation-only accounts with activation and password reset (track A3).
 - Users, organizations, memberships with org admins, rooms, and room permissions managed through the API and admin UI.
 
 **Tasks**
 
 1. **Backend:**
-   1. Google and Feide client registrations.
-   2. Identity mapping to `user_identities`, and linking by verified email (`ARCHITECTURE.md` §4).
-   3. `last_login_at`, and a `LOGIN` audit entry.
+   1. Invitations, activation and password reset (track A3).
+   2. `last_login_at`, and a `LOGIN` audit entry.
 2. **Organizations:**
    1. CRUD, archive and restore.
-   2. Members (add, change role, remove, leave), with the "last ORG_ADMIN" guard.
-   3. Invitations: create, email (logged to the console until SMTP exists), accept, expire, revoke.
+   2. Members (invite, change role including appointing ORG_ADMINs, remove, leave), with the "last ORG_ADMIN" guard (track A4).
 3. **Rooms:**
    1. CRUD, archive and restore.
    2. Opening hours (stored; enforcement comes in Phase 3).
@@ -178,7 +204,7 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
 5. **Audit log writer.** Every membership, role, room and permission change is recorded.
 6. **Authorization matrix test harness:** parameterized tests over (actor fixture × endpoint × expected status), per `API_DESIGN.md` §3. It grows with every phase.
 7. **SPA:**
-   1. Login page with provider buttons.
+   1. Login form, activation and password reset pages, profile page (track A5).
    2. `AuthGate`.
    3. `apiFetch` with CSRF, Problem Details and 401 handling.
    4. TanStack Query setup.
@@ -188,13 +214,13 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
       - rooms: list, detail, edit, permissions tab
       - organizations: list, detail, members
       - users: list, role and status
-8. **SPA, org admin pages:** members and invitations.
+8. **SPA, org admin pages:** members, invitations and roles.
 
-**Dependencies:** Phase 1. A Google client exists (Phase 0).
+**Dependencies:** Phase 1. SMTP relay (Q-17).
 
 **Acceptance criteria**
 
-- A new Google user can log in and sees no booking ability. After accepting an invitation, they are a member.
+- An invited user activates their account within 72 hours and is a member of the inviting organization. Nobody can create an account without an invitation.
 - An ORG_ADMIN can manage only their own organization. Matrix tests prove that U3 cannot modify org A and cannot make itself an admin (vertical and horizontal escalation).
 - Changing the global role is only possible for ADM, and it is audited.
 - The user directory and emails are visible only to ADM, and member emails only to OA(org) (RISK-03).
@@ -203,7 +229,7 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
 
 **Risks**
 
-- Account linking edge cases: same person, different emails. *Mitigation:* no automatic merge without a verified email match. Admin merge is out of scope; explicit linking comes in Phase 6.
+- Users who lose access to their email cannot reset. *Mitigation:* a `SYSTEM_ADMIN` can correct the email and resend an invitation. Accounts are never merged automatically.
 - Admin UI scope creep. *Mitigation:* plain searchable tables first; no matrix UI.
 
 ---
@@ -249,7 +275,7 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
 6. **Remove prototype-only code (C-20):**
    - `UserSwitcher`
    - `resetDemoData` and the "Tilbakestill demodata" button
-   - `mockData.ts` (moved to the backend seed)
+   - `mockData.ts` from API builds (it stays in the standalone demo only; there is no backend seed)
    - localStorage domain data
    - the prototype banner in the sidebar
    - `decisionSeen`
@@ -295,7 +321,7 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
 1. Nginx:
    - Enforce the CSP.
    - HSTS.
-   - `limit_req` zones for `/oauth2/`, `/login/`, `/api/` and later `/ical/`.
+   - `limit_req` zones for `/api/v1/auth/`, `/api/` and later `/oauth2/` and `/ical/`.
    - Body size limits.
    - TLS configuration that scores A on SSL Labs.
 2. Containers: non-root, read-only root file systems where possible, pinned digests, `internal: true` DB network, secrets via files and `configtree:`.
@@ -305,10 +331,9 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
    3. Write `deploy/RESTORE.md`.
    4. **Perform and time a full restore on staging.**
 4. Monitoring: Uptime Kuma (or the host's tool), certificate expiry, backup heartbeat, disk usage, email alerts.
-5. Basic email (if SMTP is available, Q-17):
+5. Basic email (Q-17). Invitation and reset already exist from track A3:
    - New request to admins
    - Decision to the requester
-   - Invitation
    - All via the `notifications` outbox job
 6. Security testing:
    - OWASP ZAP baseline scan against staging, authenticated.
@@ -316,7 +341,7 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
    - Review of session cookie flags, logout invalidation, CSRF and IDOR on every `{id}` endpoint.
 7. GDPR: privacy notice page in the SPA, record of processing (draft for Velferdstinget), retention jobs enabled.
 8. Runbooks in `deploy/`: deploy, rollback, restore, rotate secrets, add admin, incident contacts.
-9. Production environment provisioned. Real rooms, organizations and pilot ORG_ADMINs entered.
+9. Production environment provisioned. First `SYSTEM_ADMIN` created with `bootstrap-admin`; real rooms, organizations and pilot ORG_ADMINs entered through the admin UI.
 10. Pilot: 3–5 organizations and 2–3 rooms for 2–4 weeks, with a feedback channel.
 
 **Dependencies:** Phase 3. Q-08 (privacy), Q-09 (hosting), and SMTP if email is included.
@@ -332,7 +357,6 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
 **Risks**
 
 - Hosting environment constraints, such as no outbound SMTP or fixed reverse proxy rules. *Mitigation:* clarify Q-09 in Phase 0, and run staging on the same host type.
-- Feide not yet activated. *Mitigation:* pilot with Google.
 
 > **This completes the README's MVP:** login, organizations, rooms and access control; calendar views; direct booking without double booking; request-based booking; admin approval.
 
@@ -410,8 +434,7 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
 4. **Audit log viewer**, and org-scoped activity for ORG_ADMINs.
 5. **Calendar import tool** (if Q-02 says yes): an ICS upload with mapping, a dry run, and import.
 6. **Optional:**
-   - Explicit account linking (add a second login provider).
-   - Magic-link login fallback, if pilot users need it.
+   - Google account linking (track A7).
    - Organization categories (Q-16), only if bulk editing proves insufficient.
 
 **Dependencies:** Phase 3. SMTP (Q-17).
@@ -445,8 +468,8 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
 | Level | Backend | Frontend |
 |---|---|---|
 | Unit | JUnit 5: `BookingRules`, `EffectivePermission`, recurrence expansion, ICS rendering. A fixed `Clock`. | Vitest: remaining prechecks, date helpers, the API error mapping |
-| Integration | `@SpringBootTest` with Testcontainers PostgreSQL 18, MockMvc and `spring-security-test` (`oidcLogin()`) | Vitest, React Testing Library and **MSW** (mocked API, typed from OpenAPI) |
-| End to end | — | **Playwright** against the Compose stack (api, db, web, mock-oauth2-server) |
+| Integration | `@SpringBootTest` with Testcontainers PostgreSQL 18, MockMvc and `spring-security-test` (`user()`, and `oidcLogin()` for track A7) | Vitest, React Testing Library and **MSW** (mocked API, typed from OpenAPI) |
+| End to end | — | **Playwright** against the Compose stack (api, db, web, Mailpit) |
 | Security | Authorization matrix, ZAP baseline, dependency and image scans, gitleaks | CSP verification in Playwright (no console CSP violations) |
 
 ### Backend
@@ -488,11 +511,12 @@ Phases 5 and 6 are largely independent of each other and can overlap if there ar
 
 ### End to end (Playwright)
 
-The mock identity provider lets tests log in as fixture users without real accounts.
+There is no seed data. Each run bootstraps an admin on an empty database, creates organizations, rooms and users through the API, and reads activation links from the Mailpit API (track A6).
 
 | Scenario | Covers |
 |---|---|
 | Login and logout (session cookie flags, logout invalidates) | Authentication |
+| Invite, activate, log in; reset password; expired and reused links fail | Account lifecycle |
 | Direct booking appears in the calendar | Create (DIRECT) |
 | Request, then admin approves, then the requester sees the notification | Request workflow |
 | Admin rejects with a reason, and the requester sees it | Reject |
@@ -500,18 +524,21 @@ The mock identity provider lets tests log in as fixture users without real accou
 | Two browsers book the same slot at once: one wins, the other sees the conflict | Double booking |
 | Drag to a new time persists; drag onto a conflict reverts | Reschedule |
 | Cancel frees the slot | Cancel |
-| Admin creates a room, sets permissions; ORG_ADMIN invites a member, who accepts | Organization and room management |
+| Admin creates a room, sets permissions; ORG_ADMIN invites a member and appoints another ORG_ADMIN | Organization and room management |
 
 ### Security testing
 
 | Test | How |
 |---|---|
-| Authentication bypass | Every non-public endpoint without a session returns 401 (matrix meta-test). Forged or expired session cookie returns 401. OIDC `state`/`nonce` are handled by Spring; covered by a login-CSRF test. |
+| Authentication bypass | Every non-public endpoint without a session returns 401 (matrix meta-test). Forged or expired session cookie returns 401. Login without a CSRF token returns 403 (login CSRF). Unknown and known emails give identical login and reset responses. |
+| Brute force | 429 after the per-email and per-IP limits; no hard lockout |
+| Tokens | Expired, used, revoked and wrong-purpose tokens are rejected; only hashes are stored |
+| Dev/demo isolation | No `dev-auth` property, `db/dev` location or seed class exists in `src/main`; the production frontend bundle contains no `mockData` |
 | Horizontal escalation | Matrix: U3 against org A's objects |
 | Vertical escalation | Matrix: U1 and U2 against admin endpoints and role changes. A body containing `globalRole` or `requestedById` is rejected or ignored. |
 | Object-level authorization | Every `{id}` endpoint is tested with another org's ID, and with a random UUID (same response). |
 | Input validation | Oversized fields, control characters, bad colors, bad time zones, `end <= start`, a range above 62 days |
-| Session security | Cookie flags asserted, ID rotated on login, invalidated on logout and on user disable |
+| Session security | Cookie flags asserted, ID rotated on login, 8 h idle and 7 d absolute limits, invalidated on logout, password change or reset, user disable and global role change |
 | CSRF | A POST without the header returns 403 |
 | Dependencies | `npm audit`, OWASP Dependency-Check or Trivy (fs and images), gitleaks |
 | Dynamic | ZAP baseline (authenticated) against staging, nightly |
@@ -544,17 +571,8 @@ The mock identity provider lets tests log in as fixture users without real accou
 
 ---
 
-## 3. First five implementation tasks
+## 3. Next implementation tasks
 
-Once this plan is approved:
+The original first five tasks assumed a greenfield backend with OIDC. The backend now exists with a dev-only login, so the next work is the authentication track above, in order: **A1 → A2 → A3 → A4 → A5 → A6**, then the remaining Phase 3 booking work. A7 waits for Phase 6.
 
-1. **Close section A of the open questions, and start Feide and Google registration.** Meet Velferdstinget about Q-01, Q-04–Q-09 and Q-30. Submit the Feide service registration and ask the relevant institutions for activation. Create a Google OAuth client. *Output:* written decisions appended to `OPEN_QUESTIONS.md`.
-2. **Repo hygiene and frontend CI** (audit Phase 0): root `.gitignore`, unstage `.vite/`, Node LTS `engines`, Vitest upgrade, and a GitHub Actions workflow (lint, typecheck, test, build, audit, gitleaks). Add the nine audit PoCs as expected-behaviour tests.
-3. **Backend skeleton with authentication:**
-   - `backend/` with Spring Boot 4 and Java 25
-   - `compose.dev.yml` with PostgreSQL 18 and `mock-oauth2-server`
-   - `oauth2Login`, Spring Session JDBC, `csrf.spa()`, deny-by-default
-   - `GET /api/v1/me`, Problem Details handler, `Clock` bean
-   - Integration tests for 401 without a session, 403 without CSRF, and `/me` after login
-4. **Schema `V1` and integrity proof:** Flyway migration with the core tables, the DB roles and the dev seed. Testcontainers tests for every constraint, plus the **parallel double-booking test** (create and approve).
-5. **Port `BookingRules` and its tests:** a pure Java rule class mirroring `bookingRules.ts`, extended with duration, horizon, notice, opening hours and quotas. JUnit tests ported from `bookingService.test.ts` and the audit PoCs, with a fixed clock. This becomes the core that Phase 3's `BookingService` builds on.
+Repo hygiene and frontend CI (Phase 0, task 3 and 5) and porting `BookingRules` limits (Phase 3) can run alongside the track.

@@ -1,0 +1,91 @@
+package no.vtvest.booking.admin;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import no.vtvest.booking.organization.MembershipRole;
+import no.vtvest.booking.organization.OrganizationStatus;
+import no.vtvest.booking.room.Permission;
+import no.vtvest.booking.room.RoomStatus;
+import no.vtvest.booking.user.GlobalRole;
+import no.vtvest.booking.user.UserStatus;
+
+/** Request and response bodies of the system administrator API. */
+final class AdminDtos {
+
+    private AdminDtos() {}
+
+    // ── Users ──────────────────────────────────────────────────────
+
+    record UserMembership(UUID organizationId, MembershipRole role) {}
+
+    record AdminUser(
+            UUID id,
+            String email,
+            String displayName,
+            GlobalRole globalRole,
+            UserStatus status,
+            boolean hasPassword,
+            boolean mustChangePassword,
+            Instant lastLoginAt,
+            List<UserMembership> memberships) {}
+
+    record CreateUser(
+            @NotBlank String email,
+            @NotBlank String displayName,
+            @NotNull GlobalRole globalRole,
+            List<@NotNull UserMembership> memberships) {}
+
+    /** Null fields are left unchanged. */
+    record UpdateUser(String email, String displayName, GlobalRole globalRole, UserStatus status) {}
+
+    /** The temporary password is only ever returned in this response. */
+    record UserWithPassword(AdminUser user, String temporaryPassword) {}
+
+    record TemporaryPassword(String temporaryPassword) {}
+
+    record SetMembership(@NotNull MembershipRole role) {}
+
+    // ── Organizations ──────────────────────────────────────────────
+
+    record AdminOrganization(UUID id, String name, OrganizationStatus status, int memberCount) {}
+
+    record CreateOrganization(@NotBlank @Size(max = 120) String name) {}
+
+    record UpdateOrganization(@Size(min = 1, max = 120) String name, OrganizationStatus status) {}
+
+    // ── Rooms ──────────────────────────────────────────────────────
+
+    record RoomAccessEntry(UUID organizationId, Permission permission) {}
+
+    record AdminRoom(
+            UUID id,
+            String name,
+            String description,
+            String location,
+            Integer capacity,
+            String color,
+            RoomStatus status,
+            Permission defaultPermission,
+            /** Per-organization overrides of the default. */
+            List<RoomAccessEntry> access) {}
+
+    record RoomFields(
+            @NotBlank @Size(max = 80) String name,
+            @Size(max = 1000) String description,
+            @Size(max = 120) String location,
+            @Min(1) @Max(10000) Integer capacity,
+            @NotNull @Pattern(regexp = "^#[0-9a-fA-F]{6}$") String color,
+            @NotNull Permission defaultPermission,
+            /** Ignored on create (always ACTIVE). */
+            RoomStatus status) {}
+
+    /** {@code permission: null} removes the override, so the room's default applies. */
+    record SetRoomAccess(Permission permission) {}
+}

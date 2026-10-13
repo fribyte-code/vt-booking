@@ -17,6 +17,7 @@ export type ErrorCode =
   | 'VERSION_CONFLICT'
   | 'RULE_VIOLATION'
   | 'UNAUTHENTICATED'
+  | 'PASSWORD_CHANGE_REQUIRED'
   | 'NETWORK'
 
 export type RuleResult =

@@ -1,6 +1,7 @@
 # Multi-stage build of the Spring Boot API.
-# The image sets no Spring profile: development login and seed data stay off
-# unless SPRING_PROFILES_ACTIVE=dev is passed (only the local root compose.yaml does that).
+# The image sets no Spring profile. Create the first administrator with
+#   docker compose run --rm backend bootstrap-admin
+# (interactive; prompts for email and password, and refuses if an administrator exists).
 
 FROM eclipse-temurin:21-jdk AS build
 WORKDIR /src

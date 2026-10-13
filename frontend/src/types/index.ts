@@ -24,6 +24,8 @@ export interface User {
   role: UserRole
   /** Memberships. In the database this is the `memberships` join table. */
   organizationIds: string[]
+  /** API mode, signed-in user only: organizations this user administers (ORG_ADMIN). */
+  orgAdminOrganizationIds?: string[]
 }
 
 export interface Room {

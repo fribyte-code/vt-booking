@@ -1,5 +1,6 @@
 import { CalendarCheck, Send } from 'lucide-react'
 import { type FormEvent, useId, useState } from 'react'
+import { IS_DEMO } from '../../config'
 import type { BookingDraft } from '../../context/appContext'
 import { useApp } from '../../hooks/useApp'
 import { cn } from '../../lib/cn'
@@ -150,8 +151,10 @@ export function BookingDialog({ draft }: { draft: BookingDraft }) {
 
         {orgs.length === 0 ? (
           <Alert tone="warning">
-            {currentUser.name} er ikke medlem av noen organisasjon og kan ikke booke rom. Bytt til en organisasjonsbruker
-            øverst til høyre for å teste booking.
+            {currentUser.name} er ikke medlem av noen organisasjon og kan ikke booke rom.{' '}
+            {IS_DEMO
+              ? 'Bytt til en organisasjonsbruker øverst til høyre for å teste booking.'
+              : 'Be en administrator om å legge deg til i en organisasjon.'}
           </Alert>
         ) : (
           <Field

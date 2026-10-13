@@ -1,6 +1,7 @@
 # Local stack for trying the complete application: `make up`, then http://localhost:8088.
-# NOT a production setup: the backend runs with the "dev" profile (seeded users with a
-# shared password, plain-http cookies). The images themselves enable none of that.
+# NOT a production setup: the backend runs with the "dev" profile (default database password,
+# plain-http cookies). There is no seed data or development login: create the first administrator
+# with `make bootstrap-admin`, which runs `bootstrap-admin` in a one-off backend container.
 name: vt-booking
 
 include:

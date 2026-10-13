@@ -2,5 +2,5 @@ package no.vtvest.booking.user;
 
 public enum GlobalRole {
     USER,
-    ADMIN
+    SYSTEM_ADMIN
 }

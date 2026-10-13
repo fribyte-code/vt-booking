@@ -2,7 +2,7 @@
 
 Production architecture for the Velferdstinget Vest room booking system.
 
-**Status:** proposal for review (2026-10-13). Nothing in this document is implemented yet.
+**Status:** proposal for review (2026-10-13). Authentication and authorization (§4, §5) are decided; the rest is a proposal. Parts of the backend exist in `backend/`.
 
 **Related documents**
 
@@ -45,7 +45,7 @@ This is not a style preference. Each item is a production blocker.
 
 | Prototype mechanism | Why it is unsafe | Replacement | Audit ref |
 |---|---|---|---|
-| `UserSwitcher` and `vt-booking:current-user` in localStorage | Anyone can become admin | OIDC login with a server-side session | VULN-01, C-1, C-2 |
+| `UserSwitcher` and `vt-booking:current-user` in localStorage | Anyone can become admin | Email/password login with a server-side session | VULN-01, C-1, C-2 |
 | All data and rules in localStorage | DevTools can edit roles, permissions and statuses | PostgreSQL as the single source of truth, and every rule enforced in the backend | VULN-02, C-4 |
 | `getData()` loads every user, booking, room and org | Leaks emails and other orgs' details; doesn't scale | Role-scoped, range-limited and paginated endpoints | RISK-03 |
 | `actorId` parameter on every mutation | Impersonation if it is ported literally into the API | Actor taken from the session only | RISK-02 |
@@ -55,7 +55,7 @@ This is not a style preference. Each item is a production blocker.
 | Cancel checks only `requestedById` | Ex-members can cancel the org's bookings | Requires current membership or the admin role | VULN-07 |
 | Client clock (`new Date()`) and browser time zone | Time rules can be bypassed; DST bugs | Server `Clock`, `timestamptz`, business time zone `Europe/Oslo` | RISK-05 |
 | `decisionSeen` flag on the booking | Notification state is mixed into booking data | `notifications` table | — |
-| Mock data, "Tilbakestill demodata", demo banner | Not production behaviour | Removed. Seeds move to a dev-only migration. | C-20 |
+| Mock data, "Tilbakestill demodata", demo banner | Not production behaviour | Kept only in the standalone demo build. PostgreSQL never gets seed data, not even in development. | C-20 |
 
 ### What the prototype does not do yet
 
@@ -78,14 +78,14 @@ We checked the code for each of these:
              │  web  (Nginx)       │  TLS, security headers, rate limits
              │  • /         SPA    │  static files from the Vite build
              │  • /api/     ─────┐ │
-             │  • /oauth2/, /login/oauth2/ ─┤  OIDC redirects
+             │  • /oauth2/, /login/oauth2/ ─┤  Google linking (Phase 6)
              │  • /ical/    ─────┤ │  token-protected feeds
              └──────────────────┼─┘
                   network: app  │ (internal)
              ┌──────────────────▼─┐        ┌──────────────────────┐
              │  api (Spring Boot) │──SMTP─▶│ Mail relay (VT/host) │
-             │  REST + OIDC client│        └──────────────────────┘
-             │  session, rules,   │──OIDC─▶ Feide, Google (login only)
+             │  REST, password auth│        └──────────────────────┘
+             │  session, rules,   │──OIDC─▶ Google (optional linking)
              │  jobs (mail, expiry)│
              └─────────┬──────────┘
                   network: db (internal: true)
@@ -102,7 +102,7 @@ We checked the code for each of these:
 |---|---|---|
 | **SPA** (React, Vite, FullCalendar) | Rendering and interaction. UX-only prechecks, such as disabling a button or showing "the room looks busy". Caching server state. | Authorization decisions, choosing identity, trusting its own clock |
 | **Nginx (`web`)** | TLS termination, serving `dist/`, reverse proxy to `api`, security headers (C-9), coarse rate limits (C-8), body size limits | Business logic |
-| **API** (Spring Boot) | Authentication (OIDC client), sessions, CSRF, authorization, all booking rules, transactions, audit log, notifications/email outbox, ICS feeds, scheduled jobs | Serving the SPA |
+| **API** (Spring Boot) | Authentication (password, optional Google linking), sessions, CSRF, authorization, all booking rules, transactions, audit log, notifications/email outbox, ICS feeds, scheduled jobs | Serving the SPA |
 | **PostgreSQL** | Source of truth. Last-line integrity: exclusion constraint, FKs, `CHECK`s, unique indexes. Session store. | — |
 | **Backup** | Nightly `pg_dump`, encryption, offsite copy, retention | — |
 
@@ -165,7 +165,8 @@ Package by feature, with business logic in services. Controllers only map HTTP t
 ```text
 backend/src/main/java/no/vtvest/booking/
 ├── common/        Clock, ProblemDetail mapping, pagination, validation helpers
-├── security/      SecurityConfig, OIDC user mapping, Actor resolver, CSRF, session config
+├── security/      SecurityConfig, password login, Authz, Actor resolver, rate limits, session config
+├── auth/          auth_tokens, invitation/activation, password reset, bootstrap-admin CLI, Google linking
 ├── user/          users, identities, /me
 ├── organization/  organizations, memberships, invitations
 ├── room/          rooms, opening hours, room_access, effective permission
@@ -180,79 +181,116 @@ Rules for this structure:
 
 - **`BookingRules` is pure Java**, with no Spring or DB, and takes the current time as an argument. It mirrors `bookingRules.ts`, so we can unit-test it exhaustively.
 - **Authorization lives in services, not only in controller annotations.** Every service method takes an `Actor`, resolved from the session in the controller, and calls `XxxAuthorization`. Then the same checks apply to REST, ICS and scheduled jobs, and a forgotten annotation cannot open a hole.
-- **Deny by default.** Every route in `SecurityConfig` requires authentication except `/api/v1/auth/providers`, the OIDC endpoints, `/ical/**` (token auth) and health checks.
+- **Deny by default.** Every route in `SecurityConfig` requires authentication except `/api/v1/auth/{csrf,providers,login,activate,password-reset/**}`, the OIDC endpoints (when Google is enabled), `/ical/**` (token auth) and health checks.
 
 ---
 
 ## 4. Authentication
 
-### Who needs to log in
+**Decided (2026-10-13).** This replaces the earlier Feide/Google OIDC-first proposal.
 
-- Students at the institutions Velferdstinget Vest serves. They all have **Feide**.
-- Board members of student organizations. Usually students, but sometimes recent graduates, external volunteers or exchange students whose Feide access changes.
-- Velferdstinget staff and administrators. They may or may not have Feide.
+| Decision | Value |
+|---|---|
+| Primary login | Email and password, verified by the API |
+| Account creation | Only through the one-time CLI bootstrap (first `SYSTEM_ADMIN`) or an administrator invitation. No self-registration. |
+| Second login method | Optional Google account linking, later (Phase 6). Never creates or merges accounts. |
+| Feide | Not used |
+| Dev login and seeded users | None. The real application has no shared password, no predefined users and no seeded organizations, rooms or bookings. Mock data exists only in the standalone localStorage demo. |
 
-This means **no single identity provider covers everyone (ASM)**.
+### Accounts and identities
 
-### Options evaluated
+- `users.status`: `INVITED` (no password yet), `ACTIVE`, `DISABLED`. Only `ACTIVE` users can log in.
+- `users.password_hash` is null until activation.
+- Email is unique (case-insensitive) and used as the login name, but the **user ID** is the principal stored in the session. Changing an email never changes identity.
+- `user_identities (provider, subject)` holds linked external logins (Google only). Matching is on `(provider, subject)` only, **never on email**.
 
-| Option | Fit | Verdict |
-|---|---|---|
-| **Feide (OIDC)** | The national identity for Norwegian education. Strong identity, institution-managed accounts, and MFA where the institution enforces it. **Caveats:** Velferdstinget must register as a service provider in the Feide customer portal, **and each institution must activate the service individually** before its users can log in ([Feide docs](https://docs.feide.no/service_providers/manage/access_to_services/activation.html)). Graduates lose access. | **Primary provider (REC)** |
-| **Google (OIDC)** | Almost everyone has an account or can make one, and the integration is simple. Identity is self-asserted, which is acceptable because *authorization comes from memberships granted inside our system, not from the identity provider*. It sends login metadata to Google, but no booking data. | **Secondary provider (REC)**, covering people without Feide |
-| Microsoft / Entra ID | Institutions' Microsoft accounts are already covered via Feide. Personal Microsoft accounts are rare in this group. | Not needed. It is one more client registration if it is ever requested. |
-| GitHub | Developer audience only. | **Reject** |
-| Email + password | We would own password hashing, reset flows, breach detection and MFA, and credential stuffing becomes a target. The audit says "avoid local passwords" (C-1). | **Reject** |
-| Email magic link | No passwords, works for anyone with email. Needs reliable SMTP, and link security equals mailbox security. | **Optional fallback** (Phase 6), only if real users can use neither Feide nor Google |
-| ID-porten / BankID (via Feide or directly) | Strong identity, but overkill, requires approval from Sikt, and excludes international students without a Norwegian national ID. | **Reject** for now |
-| Self-hosted Keycloak as a broker | Federates Feide, Google and local accounts in one place. But it adds a stateful service to operate, upgrade and back up. | **Not for MVP.** Revisit if we need more than 3 providers or SAML. |
+### Bootstrap of the first SYSTEM_ADMIN
 
-### Recommended solution (REC)
-
-**Feide and Google via OIDC, using Spring Security `oauth2Login`, with server-side sessions. No local passwords. Organization membership is granted by invitation, not inferred from the identity provider.**
-
-**Login flow**
+A one-time CLI command run by the operator on the server. It is not an HTTP endpoint and not an environment variable read at every startup:
 
 ```text
-SPA "Logg inn med Feide" → GET /oauth2/authorization/feide → Feide → GET /login/oauth2/code/feide
-→ API maps (provider, sub) → users row (create on first login) → session cookie → redirect to SPA
-→ SPA calls GET /api/v1/me
+docker compose run --rm -it api bootstrap-admin --email admin@vtvest.no --name "Kari Admin"
 ```
 
-**Identity mapping**
+- Starts the Spring context without the web server, runs Flyway, does its work and exits.
+- **Refuses** if any `SYSTEM_ADMIN` already exists, so it cannot be used to take over a running system. A PostgreSQL advisory lock stops two concurrent runs from both succeeding.
+- **Prompts for the password twice on the terminal without echo** (`System.console().readPassword()`). The password is never accepted as an argument or environment variable, so it does not end up in shell history, `ps` output or Compose files. The same password policy applies. Refuses to run without an interactive console.
+- Creates the user as `ACTIVE` with `global_role = SYSTEM_ADMIN`. Needs no SMTP, so it works before email is configured.
+- Writes an `audit_log` entry (`BOOTSTRAP_ADMIN`, actor = system) once the audit log exists.
+- Recovery when every admin has lost access is a documented runbook step (direct SQL by the operator), not a feature.
 
-- Each login identity is a row in `user_identities (provider, subject)`.
-- `sub` is the stable key. Email is *not* the key, because emails change and can be recycled.
-- **Account linking:** a first-time identity whose `email_verified` email matches an existing user is linked to that user. Otherwise a new user is created. Users can also link a second provider explicitly while logged in (Phase 6).
+### Invitation and activation
 
-**Onboarding**
+1. A `SYSTEM_ADMIN`, or an `ORG_ADMIN` for their own organization, invites an email address with an organization and role.
+2. New email: an `INVITED` user and the membership are created. Existing user: only the membership is added and the user is notified. No new account is created.
+3. The API emails `https://<host>/aktiver#token=<token>`. The token is in the fragment so it never reaches Nginx logs or `Referer` headers.
+4. `POST /api/v1/auth/activate { token, password }` sets the password, sets `ACTIVE`, consumes the token and logs the user in.
+5. Re-inviting voids the previous token. Expired invitations can be re-sent by an admin.
 
-- Anyone with Feide or Google can log in, but a new user has **no memberships**. They can view the calendar (see Q-05) but cannot book.
-- Memberships are created when an organization admin (`ORG_ADMIN`) or a Velferdstinget admin invites the user (an email link) or adds them directly.
-- This scales to hundreds of organizations, because Velferdstinget doesn't have to manage every member (Q-04).
+### Password reset
 
-**Admins**
+- `POST /api/v1/auth/password-reset { email }` always returns `202` with the same body and timing, whether or not the account exists. Only `ACTIVE` users get an email.
+- Link: `https://<host>/nytt-passord#token=<token>`, valid **30 minutes**, single use.
+- `POST /api/v1/auth/password-reset/confirm { token, password }` sets the password, deletes **all** of the user's sessions and sends a "your password was changed" email.
+- Requesting a new reset voids older reset tokens. Changing a user's email voids all their outstanding tokens.
 
-- The `ADMIN` role is set only in the database: by an existing admin, or bootstrapped from an environment variable listing initial admin emails on first startup.
-- It is never derived from an identity provider claim.
-- **Recommendation:** admins log in with Feide or a Google account that has 2-step verification. We cannot reliably verify that from Google's claims, so this is policy, not a technical control (C-19).
+### Tokens
 
-### Sessions (REC, C-2)
+`auth_tokens` stores `SHA-256(token)` only. Tokens are 256-bit random values from `SecureRandom`, base64url-encoded, single use (`used_at`), with a `purpose` (`INVITE`, `RESET`).
 
-- **Spring Session JDBC** stores sessions in PostgreSQL. Sessions survive API restarts and deploys, and there's no Redis to run.
-- Cookie: `__Host-SESSION`, with `HttpOnly`, `Secure`, `SameSite=Lax` and `Path=/`.
-  - `Lax` is required because the OIDC callback is a cross-site top-level GET.
-  - The `__Host-` prefix forbids a `Domain` attribute.
-- Timeouts: 8 hours idle and 7 days absolute (Q-21). After that, re-login is usually seamless through the identity provider's own SSO session.
-- The session ID is rotated on login. Logout (`POST /api/v1/auth/logout`) invalidates the server-side session.
-- **No tokens reach the browser.** Access and refresh tokens from the identity providers are only used during login and are not stored. This is effectively the BFF pattern, with the API acting as the BFF.
-- **When a user is disabled**, their sessions are deleted immediately. We can query them by principal name in Spring Session JDBC.
+| Token | Lifetime |
+|---|---|
+| Invitation | 72 hours |
+| Password reset | 30 minutes |
+
+### Passwords
+
+- Hashing: **Argon2id** (`Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8()`) behind a `DelegatingPasswordEncoder`, so parameters or algorithms can be upgraded and old hashes re-hashed on login.
+- Policy: at least 8 characters. No composition rules, blacklist, email comparison or forced rotation.
+- Logged-in users change their password with the current one. This deletes their other sessions.
+
+### Login
+
+- `POST /api/v1/auth/login { email, password }` (JSON, CSRF-protected to prevent login CSRF). Responds `204` with a new session, or `401` with one generic message.
+- Unknown emails cost the same as wrong passwords (Spring's `DaoAuthenticationProvider` hashes a dummy password).
+- `INVITED` and `DISABLED` users get the same generic `401`.
+- `last_login_at` is updated and a `LOGIN` audit entry is written. Failed logins are logged with the email hash and IP, not the password.
+
+### Rate limiting and brute force
+
+- Nginx `limit_req` on `/api/v1/auth/` (coarse, per IP).
+- In the API: Bucket4j buckets in memory (single instance), keyed by **IP** and by **normalized email**, for login, password reset request, activation and reset confirm. Example: 5 failed logins per email per 15 minutes, then exponential delay. Returns `429` with `Retry-After`.
+- Throttling, not hard lockout, so an attacker cannot lock a real user out.
+
+### Optional Google account linking (Phase 6)
+
+- Enabled only when a Google client ID/secret is configured. `GET /api/v1/auth/providers` tells the SPA whether to show the button.
+- **Linking** starts from the logged-in profile page: the user re-enters their password (step-up, valid 5 minutes), the API stores a link intent (user ID, nonce) in the session and redirects to Google. A custom success handler links `(google, sub)` to **that** user unless it is already linked to someone else, then restores the original authentication. The Google email is stored for display only.
+- **Login with Google** succeeds only if `(google, sub)` is already linked to an `ACTIVE` user. Otherwise it fails with a generic message. No account is created and nothing is matched by email.
+- Unlinking requires the user to still have a password.
+- No Google tokens are stored after login.
+
+### Sessions (C-2)
+
+- **Spring Session JDBC** in PostgreSQL. Sessions survive restarts and can be listed and deleted per user.
+- Cookie: `__Host-SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`.
+- **8 hours idle, 7 days absolute.** The absolute limit is enforced by a filter that compares the session's creation time.
+- Session ID rotated on login. Logout (`POST /api/v1/auth/logout`) invalidates the session.
+- All of a user's sessions are deleted on password change or reset, on disable, and when a `SYSTEM_ADMIN` changes their global role.
+- The session holds only the user ID. **Roles and memberships are loaded from the database on every request**, so demotions take effect immediately.
 
 ### CSRF (C-3)
 
-- Spring Security's SPA mode (`csrf.spa()`): the server sets an `XSRF-TOKEN` cookie, and the SPA echoes it in an `X-XSRF-TOKEN` header on every non-GET request.
+- Spring Security's SPA mode (`csrf.spa()`): the server sets an `XSRF-TOKEN` cookie, and the SPA echoes it in an `X-XSRF-TOKEN` header on every non-GET request, including login, activation and reset.
 - `SameSite=Lax` is defence in depth, not the main control.
 - GET requests never change state. This includes the ICS feeds.
+
+### Development, test and demo isolation
+
+- **No dev login and no seed data in PostgreSQL.** Developers create their own account with the same `bootstrap-admin` command against their local database (a `make bootstrap-admin` wrapper) and invite further test accounts through the UI, exactly as in production.
+- **Email in development:** Mailpit in the dev Compose file catches invitation and reset emails. There is no "print token to log" mode.
+- **Automated tests** create their own fixtures per test (repository calls or test builders) in Testcontainers databases. Fixtures live in `src/test`, never in `src/main` or a Flyway location.
+- **The standalone demo** (`VITE_DATA_MODE=demo`, localStorage) is the only place with mock users, organizations and bookings. It is a separate build, never calls the API, and its code is tree-shaken out of the production build. The production image must not include the demo.
 
 ---
 
@@ -262,8 +300,8 @@ SPA "Logg inn med Feide" → GET /oauth2/authorization/feide → Feide → GET /
 
 | Concept | Values | Stored in |
 |---|---|---|
-| Global role | `USER`, `ADMIN` | `users.global_role` |
-| Organization role | `MEMBER`, `ORG_ADMIN` | `memberships.role` |
+| Global role | `USER`, `SYSTEM_ADMIN` | `users.global_role` |
+| Organization role | `MEMBER`, `ORG_ADMIN` (per organization; a user can hold different roles in different organizations) | `memberships.role` |
 | Room permission for an organization | `DIRECT`, `REQUEST`, `NONE` | `room_access`, falling back to `rooms.default_permission` |
 | Room approval override | `approval_required` caps `DIRECT` at `REQUEST` | `rooms.approval_required` |
 
@@ -278,19 +316,35 @@ return p
 
 Room defaults plus per-organization overrides are what make *hundreds* of organizations manageable. Most rooms only need a default ("all organizations: REQUEST") and a handful of exceptions. See `DATABASE_DESIGN.md` §4.
 
+### Roles (decided)
+
+- **SYSTEM_ADMIN:** full access. Creates, edits and disables rooms; manages organizations, users, global roles, memberships and room permissions; sees and manages all bookings; **the only role that approves or rejects booking requests** (for now).
+- **ORG_ADMIN** (own organization only): lists members, invites members, appoints and removes other `ORG_ADMIN`s, removes members, cancels the organization's bookings. Cannot approve requests, touch rooms or room permissions, change global roles, change a user's email, status or password, or act on another organization.
+- **MEMBER:** books or requests rooms for the organization according to its effective permission; cancels own bookings.
+
 ### Who can do what (summary)
 
 The full per-endpoint matrix is in `API_DESIGN.md` §3.
 
-| Action | USER (no membership) | MEMBER of org X | ORG_ADMIN of org X | ADMIN |
+| Action | USER (no membership) | MEMBER of org X | ORG_ADMIN of org X | SYSTEM_ADMIN |
 |---|---|---|---|---|
 | View calendar (approved, title and org name) | ✓ (Q-05) | ✓ | ✓ | ✓ |
 | View org X's pending requests and descriptions | — | ✓ | ✓ | ✓ |
-| Book or request for org X | — | per effective permission | per effective permission | — (as member only) / on behalf of org X via admin tools |
+| Book or request for org X | — | per effective permission | per effective permission | as member, or on behalf of org X via admin tools |
 | Cancel org X's booking | — | own bookings | all of org X's bookings | all |
-| Manage org X's members and invitations | — | — | ✓ | ✓ |
+| Invite members to org X, set MEMBER/ORG_ADMIN, remove members | — | — | ✓ | ✓ |
 | Approve or reject requests | — | — | — | ✓ |
-| Rooms, permissions, blocks, settings | — | — | — | ✓ |
+| Rooms, permissions, organizations, blocks, settings | — | — | — | ✓ |
+| Users: email, status (disable), global role | — | — | — | ✓ |
+
+### Privilege escalation guards
+
+- An `ORG_ADMIN`'s organization is taken from the URL path and checked against **their own `ORG_ADMIN` membership, read from the database** in the service (`Authz.requireOrgAdmin(actor, orgId)`).
+- Org-admin request DTOs contain only `email`, `displayName` (for new users) and `role ∈ {MEMBER, ORG_ADMIN}`. There is no `globalRole`, `status` or `organizationId` field to inject.
+- `ORG_ADMIN`s cannot change a user's email, status or password, or trigger a reset for someone else. This closes the "change email, then reset password" takeover.
+- `ORG_ADMIN`s cannot change or remove the membership of a `SYSTEM_ADMIN`.
+- An organization's **last `ORG_ADMIN`** cannot be demoted or removed except by a `SYSTEM_ADMIN`. The **last active `SYSTEM_ADMIN`** cannot be demoted or disabled. Nobody can disable themselves.
+- Every role and membership change is audited.
 
 ### Security rules every endpoint follows
 
@@ -308,15 +362,15 @@ This maps the audit's controls to architectural decisions. Implementation tasks 
 
 | Concern | Decision | Audit |
 |---|---|---|
-| Authentication | Feide and Google OIDC, server sessions, no passwords | VULN-01, C-1, C-2 |
+| Authentication | Email/password (Argon2id), invitation-only accounts, CLI bootstrap, optional Google linking, server sessions | VULN-01, C-1, C-2 |
 | CSRF | `csrf.spa()`, header token | C-3 |
 | XSS | React escaping (verified in audit §7), no HTML sinks, CSP from Nginx. ICS output is escaped per RFC 5545. Email templates are escaped (Thymeleaf text/HTML). | C-9 |
 | Authorization | Service-layer checks, deny by default, 404 on invisible objects, authorization matrix tests | VULN-02, RISK-02, RISK-04, C-4, C-18 |
-| Privilege escalation | `global_role` and `memberships.role` change only through admin/ORG_ADMIN endpoints, which are audited. An ORG_ADMIN cannot grant room permissions or the global admin role. Mass assignment is prevented with explicit request DTOs. | C-19 |
+| Privilege escalation | `global_role` and `memberships.role` change only through admin/ORG_ADMIN endpoints, which are audited. An ORG_ADMIN cannot grant room permissions or the global role, or change a user's email, status or password (§5). Mass assignment is prevented with explicit request DTOs. | C-19 |
 | Integrity | Exclusion constraint, `CHECK`s, FKs, `@Version` optimistic locking | RISK-01, C-5 |
 | Input validation | Bean Validation on every DTO, DB length limits, 64 KB body cap (Nginx and Spring), control characters stripped, colour regex | VULN-06, RISK-06, C-6 |
 | Business abuse | Max duration, horizon, quotas, duplicate-request unique index | VULN-03, VULN-05, C-7 |
-| Rate limiting | Nginx `limit_req`: strict on `/oauth2/`, `/login/` and `/ical/`, moderate on `/api/`. Business quotas in the DB. Bucket4j only if Nginx proves insufficient. | C-8 |
+| Rate limiting | Nginx `limit_req`: strict on `/api/v1/auth/`, `/oauth2/` and `/ical/`, moderate on `/api/`. Bucket4j per IP and per email for login, reset and activation. Business quotas in the DB. | C-8 |
 | Headers & TLS | HSTS, CSP (audit C-9 policy, verified against FullCalendar inline styles), TLS 1.2+ | C-9, C-10 |
 | Audit log | Append-only `audit_log` table. The app DB role has `INSERT`/`SELECT` only. | C-12 |
 | Errors | RFC 9457 Problem Details, no stack traces, a request ID in each response | C-13 |
@@ -324,7 +378,7 @@ This maps the audit's controls to architectural decisions. Implementation tasks 
 | DB least privilege | Separate `booking_owner` (DDL, used only by Flyway) and `booking_app` (DML) roles | C-14 |
 | Containers | Non-root, read-only root FS where possible, DB on an internal-only network, pinned image digests | C-15 |
 | Supply chain | Renovate, `npm audit`, OWASP Dependency-Check or Trivy, gitleaks in CI | C-17, DEP-01 |
-| Privacy (GDPR) | Minimal data (name, email, provider subject), role-scoped exposure, retention jobs, a privacy notice. Velferdstinget is the data controller (Q-08). | RISK-03, C-16 |
+| Privacy (GDPR) | Minimal data (name, email, password hash, linked provider subject), role-scoped exposure, retention jobs, a privacy notice. Velferdstinget is the data controller (Q-08). | RISK-03, C-16 |
 
 ### Account and organization lifecycle
 
@@ -333,7 +387,7 @@ This maps the audit's controls to architectural decisions. Implementation tasks 
 | User removed from org | Membership row deleted and audited. Their **pending** requests for that org are auto-rejected with a system comment (VULN-04). Approved bookings stay, because they belong to the org. They lose cancel rights immediately (VULN-07). |
 | Membership expires (`expires_at`) | Nightly job behaves as above. Supports a yearly board turnover without manual cleanup. |
 | Org access to room downgraded to `NONE` | Pending requests for that org and room are auto-rejected. Future approved bookings are kept but flagged for admin review (Q-14). |
-| User disabled | Sessions deleted, calendar feed tokens revoked, pending requests auto-rejected. History kept. |
+| User disabled | Sessions deleted, outstanding invitation/reset tokens voided, calendar feed tokens revoked, pending requests auto-rejected. History kept. |
 | User deletion request (GDPR) | User is anonymized ("Slettet bruker", email removed, identities deleted). Booking rows keep the anonymized reference. |
 | Org archived | No new bookings, pending requests rejected, future bookings cancelled (with notification), history kept, hidden from pickers. Reversible with `restore`. |
 | Room archived | As for an archived org. `DISABLED` instead keeps the room visible but not bookable, for example during renovation. |
@@ -489,7 +543,7 @@ This is a migration tool, not a sync.
 
 ## 9. Deployment architecture
 
-**REQ:** self-hosted on Velferdstinget's own servers, Docker Compose, Nginx, no external cloud services needed for operation. Feide and Google are used for login only.
+**REQ:** self-hosted on Velferdstinget's own servers, Docker Compose, Nginx, no external cloud services needed for operation. Google is used only for optional account linking.
 
 ### Containers
 
@@ -507,10 +561,10 @@ This is a migration tool, not a sync.
 
 ### Configuration and secrets
 
-- `deploy/.env` holds non-secret configuration: hostname, enabled providers, SMTP host. It is generated from `.env.example`. A root `.gitignore` covers `.env*`, `*.pem` and `*.key` (HYG-01).
+- `deploy/.env` holds non-secret configuration: hostname, Google linking on/off, SMTP host. It is generated from `.env.example`. A root `.gitignore` covers `.env*`, `*.pem` and `*.key` (HYG-01).
 - Secrets are Compose `secrets:` files with mode `0600`, outside the repo, mounted into `/run/secrets` and read with `spring.config.import=configtree:/run/secrets/`. They include:
   - DB passwords (owner and app)
-  - Feide and Google client secrets
+  - Google client secret (only if linking is enabled)
   - SMTP password
   - restic password
 - Flyway runs at API startup with the **owner** credentials (`spring.flyway.user/password`). The application datasource uses the DML-only `booking_app` role.
@@ -539,9 +593,9 @@ This is a migration tool, not a sync.
 
 | Env | Where | Identity | Data |
 |---|---|---|---|
-| **dev** | Developer laptop: `docker compose -f compose.dev.yml` (db and a mock OIDC server) plus `npm run dev` with a Vite proxy to the API | `mock-oauth2-server` (navikt), with logins for any test user | Dev seed migration (ported from `mockData.ts`) |
-| **staging** | Same server or a small VM, same Compose file, separate DB and volume | Feide test environment and a Google test client | Anonymized restore or seed |
-| **prod** | Production server | Feide production and Google | Real |
+| **dev** | Developer laptop: Compose with db and Mailpit, plus `npm run dev:api` with a Vite proxy to the API | Real password login; first account from `bootstrap-admin`, others invited (emails in Mailpit) | Empty database; whatever the developer creates |
+| **staging** | Same server or a small VM, same Compose file, separate DB and volume | Password login; Google test client if linking is enabled | Anonymized restore, or created through the UI |
+| **prod** | Production server | Password login; optional Google linking | Real |
 
 ### Deployment and rollback
 

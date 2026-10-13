@@ -1,5 +1,5 @@
 import { Check, Inbox, ShieldAlert, User, X } from 'lucide-react'
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { PermissionBadge, RoomDot } from '../components/booking/badges'
 import { BookingListItem, EmptyState } from '../components/booking/BookingListItem'
 import { RejectDialog } from '../components/booking/RejectDialog'
@@ -12,8 +12,16 @@ import { useApprove } from '../hooks/useApprove'
 import { formatDateTime, formatTimeRange } from '../lib/dates'
 import { findConflicts, getPermission } from '../services/bookingRules'
 import type { Booking } from '../types'
+import { IS_DEMO } from '../config'
 
-type TabId = 'pending' | 'processed' | 'access'
+// API mode only: managing users, organizations and rooms. The demo shows a read-only overview instead.
+const UsersAdmin = lazy(() => import('../components/admin/UsersAdmin').then((m) => ({ default: m.UsersAdmin })))
+const OrganizationsAdmin = lazy(() =>
+  import('../components/admin/OrganizationsAdmin').then((m) => ({ default: m.OrganizationsAdmin })),
+)
+const RoomsAdmin = lazy(() => import('../components/admin/RoomsAdmin').then((m) => ({ default: m.RoomsAdmin })))
+
+type TabId = 'pending' | 'processed' | 'access' | 'users' | 'organizations' | 'rooms'
 
 export function AdminPage() {
   const app = useApp()
@@ -39,7 +47,11 @@ export function AdminPage() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Administrasjon</h1>
-          <p className="mt-1 text-sm text-slate-500">Behandle søknader og se tilganger for rom og organisasjoner.</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {IS_DEMO
+              ? 'Behandle søknader og se tilganger for rom og organisasjoner.'
+              : 'Behandle søknader, og administrer brukere, organisasjoner, rom og tilganger.'}
+          </p>
         </div>
 
         <Tabs<TabId>
@@ -49,7 +61,13 @@ export function AdminPage() {
           tabs={[
             { id: 'pending', label: 'Ventende søknader', count: pending.length },
             { id: 'processed', label: 'Behandlet', count: processed.length },
-            { id: 'access', label: 'Rom og tilganger' },
+            ...(IS_DEMO
+              ? [{ id: 'access' as const, label: 'Rom og tilganger' }]
+              : [
+                  { id: 'users' as const, label: 'Brukere' },
+                  { id: 'organizations' as const, label: 'Organisasjoner' },
+                  { id: 'rooms' as const, label: 'Rom og tilganger' },
+                ]),
           ]}
         />
 
@@ -57,6 +75,13 @@ export function AdminPage() {
           {tab === 'pending' && <PendingList bookings={pending} />}
           {tab === 'processed' && <ProcessedList bookings={processed} />}
           {tab === 'access' && <AccessOverview />}
+          {!IS_DEMO && (
+            <Suspense fallback={<p className="text-sm text-slate-500">Laster …</p>}>
+              {tab === 'users' && <UsersAdmin />}
+              {tab === 'organizations' && <OrganizationsAdmin />}
+              {tab === 'rooms' && <RoomsAdmin />}
+            </Suspense>
+          )}
         </div>
       </div>
     </div>

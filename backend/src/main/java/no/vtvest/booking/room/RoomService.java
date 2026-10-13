@@ -47,7 +47,7 @@ public class RoomService {
      */
     @Transactional(readOnly = true)
     public List<RoomResponse> listRooms(User actor) {
-        List<Organization> myOrganizations = actor.isAdmin()
+        List<Organization> myOrganizations = actor.isSystemAdmin()
                 ? organizations.findAll().stream().filter(Organization::isActive).toList()
                 : organizations.findAllById(memberships.findByIdUserId(actor.getId()).stream()
                         .map(Membership::getId)

@@ -22,9 +22,10 @@ The database is the **last line of defence** for integrity. The service layer gi
 ## 2. Entity overview
 
 ```text
-users ──< user_identities
+users ──< user_identities (optional Google link)
+  ├──< auth_tokens (invite, reset)
   │
-  ├──< memberships >── organizations ──< organization_invitations
+  ├──< memberships >── organizations
   │                         │
   │                         └──< room_access >── rooms ──< room_opening_hours
   │                                                │
@@ -40,11 +41,11 @@ system_settings (single row)      spring_session tables (Spring Session JDBC)
 
 | Table | Why it exists | New vs README model |
 |---|---|---|
-| `users` | Accounts and global role | README |
-| `user_identities` | One user can log in with Feide and/or Google | **new**, needed for multi-provider login |
+| `users` | Accounts, password hash, status and global role | README |
+| `user_identities` | Optional linked Google login (Phase 6) | **new** |
+| `auth_tokens` | Hashed single-use invitation and password-reset tokens | **new**, needed for invitation-only accounts |
 | `organizations` | Organizations, plus quota overrides | README |
 | `memberships` | User ↔ org with org role and optional expiry | README (+ role, expiry) |
-| `organization_invitations` | Self-service onboarding by org admins | **new**, needed so Velferdstinget doesn't manage all members |
 | `rooms` | Rooms, status, default permission, limits | README |
 | `room_opening_hours` | Opening hours per weekday | **new** (booking restriction) |
 | `room_access` | Per (room, org) permission override | README |
@@ -73,26 +74,47 @@ CREATE EXTENSION IF NOT EXISTS citext;
 
 -- ── Users & identity ─────────────────────────────────────────────
 CREATE TABLE users (
-  id             uuid PRIMARY KEY DEFAULT uuidv7(),
-  email          citext UNIQUE,                         -- NULL after anonymization
-  display_name   varchar(120) NOT NULL,
-  global_role    text NOT NULL DEFAULT 'USER'  CHECK (global_role IN ('USER','ADMIN')),
-  status         text NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','DISABLED','ANONYMIZED')),
-  created_at     timestamptz NOT NULL DEFAULT now(),
-  last_login_at  timestamptz
+  id                   uuid PRIMARY KEY DEFAULT uuidv7(),
+  email                citext UNIQUE,                   -- login name; NULL after anonymization
+  display_name         varchar(120) NOT NULL,
+  global_role          text NOT NULL DEFAULT 'USER'    CHECK (global_role IN ('USER','SYSTEM_ADMIN')),
+  status               text NOT NULL DEFAULT 'INVITED' CHECK (status IN ('INVITED','ACTIVE','DISABLED','ANONYMIZED')),
+  password_hash        varchar(255),                    -- Argon2id via DelegatingPasswordEncoder ({argon2}...)
+  password_changed_at  timestamptz,
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  created_by_id        uuid REFERENCES users,           -- NULL = CLI bootstrap
+  last_login_at        timestamptz,
+  CHECK (status <> 'ACTIVE' OR password_hash IS NOT NULL),
+  CHECK (status <> 'ANONYMIZED' OR (email IS NULL AND password_hash IS NULL))
 );
 
+-- Invitation and password reset links. Only the hash is stored.
+CREATE TABLE auth_tokens (
+  id             uuid PRIMARY KEY DEFAULT uuidv7(),
+  user_id        uuid NOT NULL REFERENCES users ON DELETE CASCADE,
+  purpose        text NOT NULL CHECK (purpose IN ('INVITE','RESET')),
+  token_hash     bytea NOT NULL UNIQUE,                 -- SHA-256 of a 256-bit random token
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  created_by_id  uuid REFERENCES users,                 -- inviter; NULL for self-service reset
+  expires_at     timestamptz NOT NULL,                  -- INVITE: +72 h, RESET: +30 min
+  used_at        timestamptz,
+  revoked_at     timestamptz                            -- set when a newer token of the same purpose is issued,
+                                                        -- on email change, disable or password change
+);
+CREATE INDEX ON auth_tokens (user_id, purpose) WHERE used_at IS NULL AND revoked_at IS NULL;
+
+-- Optional linked external logins (Google, Phase 6). Matched on (provider, subject) only, never email.
 CREATE TABLE user_identities (
   id             uuid PRIMARY KEY DEFAULT uuidv7(),
   user_id        uuid NOT NULL REFERENCES users ON DELETE CASCADE,
-  provider       text NOT NULL CHECK (provider IN ('feide','google')),   -- extend via migration
-  subject        text NOT NULL,                         -- OIDC "sub": the stable key, never the email
-  email          citext,                                -- as asserted at last login
-  created_at     timestamptz NOT NULL DEFAULT now(),
+  provider       text NOT NULL CHECK (provider IN ('google')),   -- extend via migration
+  subject        text NOT NULL,                         -- OIDC "sub": the stable key
+  email          citext,                                -- display only, as asserted when linked
+  linked_at      timestamptz NOT NULL DEFAULT now(),
   last_login_at  timestamptz,
-  UNIQUE (provider, subject)
+  UNIQUE (provider, subject),
+  UNIQUE (user_id, provider)                            -- one Google account per user
 );
-CREATE INDEX ON user_identities (user_id);
 
 -- ── Organizations ────────────────────────────────────────────────
 CREATE TABLE organizations (
@@ -122,20 +144,8 @@ CREATE TABLE memberships (
 );
 CREATE INDEX ON memberships (organization_id);
 
-CREATE TABLE organization_invitations (
-  id               uuid PRIMARY KEY DEFAULT uuidv7(),
-  organization_id  uuid NOT NULL REFERENCES organizations,
-  email            citext NOT NULL,                     -- where the link was sent
-  role             text NOT NULL DEFAULT 'MEMBER' CHECK (role IN ('MEMBER','ORG_ADMIN')),
-  token_hash       bytea NOT NULL UNIQUE,               -- SHA-256 of a 256-bit random token
-  invited_by_id    uuid NOT NULL REFERENCES users,
-  created_at       timestamptz NOT NULL DEFAULT now(),
-  expires_at       timestamptz NOT NULL,
-  accepted_at      timestamptz,
-  accepted_by_id   uuid REFERENCES users,
-  revoked_at       timestamptz
-);
-CREATE INDEX ON organization_invitations (organization_id) WHERE accepted_at IS NULL AND revoked_at IS NULL;
+-- Invitations are an INVITED user (or an existing user) + a membership row + an INVITE auth_token.
+-- There is no separate invitations table.
 
 -- ── Rooms & access ───────────────────────────────────────────────
 CREATE TABLE rooms (
@@ -286,7 +296,7 @@ CREATE TABLE audit_log (
   id               bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   occurred_at      timestamptz NOT NULL DEFAULT now(),
   actor_user_id    uuid REFERENCES users,      -- NULL = system job
-  action           text NOT NULL,              -- e.g. BOOKING_APPROVED, ROOM_ACCESS_CHANGED, MEMBER_REMOVED, LOGIN
+  action           text NOT NULL,              -- e.g. BOOKING_APPROVED, ROOM_ACCESS_CHANGED, MEMBER_REMOVED, LOGIN, LOGIN_FAILED, PASSWORD_CHANGED, BOOTSTRAP_ADMIN
   entity_type      text NOT NULL,
   entity_id        text NOT NULL,
   organization_id  uuid,                       -- for org-scoped filtering; no FK on purpose (history)
@@ -495,13 +505,13 @@ The README's "Faste tider / rom" can mean two different things. We support the c
 |---|---|---|
 | Bookings (all statuses) | Kept as history | Status, never deleted |
 | Personal details on old bookings | `description` cleared and `requested_by_id` pointed at an anonymized placeholder after **24 months** | Nightly job |
-| Users | Active while used. Users with no memberships and no login for 24 months are anonymized. On GDPR request, anonymized immediately. | `status = 'ANONYMIZED'`, email NULL, identities deleted |
+| Users | Active while used. Users with no memberships and no login for 24 months are anonymized. On GDPR request, anonymized immediately. | `status = 'ANONYMIZED'`, email and password hash NULL, identities and tokens deleted |
 | Organizations | Archived, never deleted | `status = 'ARCHIVED'` |
 | Rooms | Archived, never deleted | `status = 'ARCHIVED'` |
 | Notifications | 12 months | Nightly delete |
 | Audit log | 36 months | Nightly delete of older rows (by the owner role, not the app role) |
 | Sessions | Spring Session expiry | Built-in cleanup |
-| Expired or used invitations | 90 days | Nightly delete |
+| Expired, used or revoked `auth_tokens` | 90 days | Nightly delete |
 
 A booking that references an archived org or room stays valid, because the FKs are `RESTRICT` and nothing is deleted.
 
@@ -528,5 +538,5 @@ There are no superuser connections from the application. PostgreSQL is not publi
   1. Add the nullable column or new table, and deploy.
   2. Backfill, and switch the code to use it.
   3. Remove the old column in a later release.
-- **Dev and staging seed:** `db/seed/R__dev_seed.sql`, a repeatable migration loaded only in the `dev` and `staging` profiles. It ports the prototype's `mockData.ts`.
+- **No seed data in any environment.** There is no `db/dev` or `db/seed` location. Every database starts empty; the first account comes from the `bootstrap-admin` CLI and the rest from invitations. Mock data exists only in the frontend's standalone localStorage demo. Tests build their own fixtures in `src/test`.
 - CI runs every migration against an empty PostgreSQL 18 (Testcontainers). Hibernate `validate` checks that entities match.

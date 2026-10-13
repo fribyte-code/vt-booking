@@ -6,8 +6,8 @@ import { Alert, Field, Input } from '../components/ui/fields'
 import { errorMessage } from '../lib/errors'
 
 /**
- * API mode login. The backend currently only offers a development login with
- * predefined users (enabled by its `dev` profile); Feide/Google replaces it later.
+ * API mode login with email and password. Accounts are created by administrators
+ * (the first one with the backend's bootstrap-admin command); there is no sign-up.
  */
 export function LoginPage({ onLogin }: { onLogin: (email: string, password: string) => Promise<void> }) {
   const id = useId()

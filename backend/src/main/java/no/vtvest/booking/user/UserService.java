@@ -27,6 +27,7 @@ public class UserService {
                         m.getRole()))
                 .sorted(Comparator.comparing(MeResponse.MembershipResponse::organizationName))
                 .toList();
-        return new MeResponse(actor.getId(), actor.getEmail(), actor.getDisplayName(), actor.getGlobalRole(), mine);
+        return new MeResponse(
+                actor.getId(), actor.getEmail(), actor.getDisplayName(), actor.getGlobalRole(), actor.isMustChangePassword(), mine);
     }
 }

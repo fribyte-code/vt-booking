@@ -1,4 +1,4 @@
-import { CalendarDays, Check, ListChecks, LogIn, Plus, RotateCcw, ShieldCheck } from 'lucide-react'
+import { CalendarDays, Check, ListChecks, LogIn, Plus, RotateCcw, ShieldCheck, Users } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { IS_DEMO, LOGIN_URL } from '../../config'
@@ -57,6 +57,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <NavItem to="/mine-bookinger" icon={<ListChecks />} label="Mine bookinger" count={myPendingCount} onNavigate={onNavigate} />
         {currentUser.role === 'ADMIN' && (
           <NavItem to="/admin" icon={<ShieldCheck />} label="Administrasjon" count={pendingCount} onNavigate={onNavigate} />
+        )}
+        {!IS_DEMO && (currentUser.orgAdminOrganizationIds?.length ?? 0) > 0 && (
+          <NavItem to="/medlemmer" icon={<Users />} label="Medlemmer" onNavigate={onNavigate} />
         )}
       </nav>
 

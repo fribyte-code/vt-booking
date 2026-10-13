@@ -23,6 +23,10 @@ export interface AppContextValue {
   setCurrentUserId: (id: string) => void
   /** API mode only: end the session. */
   logout: () => Promise<void>
+  /** API mode only: change the signed-in user's password. */
+  changePassword?: (currentPassword: string, newPassword: string) => Promise<void>
+  /** Load the data again, e.g. after an administrator changed rooms or organizations. */
+  reload: () => void
   /** True while data is being (re)loaded, e.g. after navigating the calendar. */
   loading: boolean
   /** The calendar's visible period, so API mode can load bookings for it. */

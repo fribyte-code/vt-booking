@@ -215,7 +215,7 @@ public class BookingService {
     }
 
     private boolean mayCancel(User actor, Booking booking) {
-        if (actor.isAdmin()) {
+        if (actor.isSystemAdmin()) {
             return true;
         }
         return memberships.findById(new MembershipId(actor.getId(), booking.getOrganizationId()))
@@ -224,7 +224,7 @@ public class BookingService {
     }
 
     private static void requireAdmin(User actor) {
-        if (!actor.isAdmin()) {
+        if (!actor.isSystemAdmin()) {
             throw new ApiException(ErrorCode.FORBIDDEN, "Bare administratorer kan behandle søknader.");
         }
     }
@@ -317,7 +317,7 @@ public class BookingService {
     /** Everyone sees approved bookings; other statuses only for the own organization and admins. */
     private static boolean isVisible(Booking booking, User actor, Set<UUID> myOrganizationIds) {
         return booking.getStatus() == BookingStatus.APPROVED
-                || actor.isAdmin()
+                || actor.isSystemAdmin()
                 || myOrganizationIds.contains(booking.getOrganizationId());
     }
 
@@ -345,7 +345,7 @@ public class BookingService {
 
         Set<UUID> userIds = new HashSet<>();
         for (Booking b : found) {
-            if (actor.isAdmin() || myOrganizationIds.contains(b.getOrganizationId())) {
+            if (actor.isSystemAdmin() || myOrganizationIds.contains(b.getOrganizationId())) {
                 userIds.add(b.getRequestedById());
                 if (b.getDecidedById() != null) {
                     userIds.add(b.getDecidedById());
@@ -357,7 +357,7 @@ public class BookingService {
 
         return found.stream()
                 .map(b -> {
-                    boolean own = actor.isAdmin() || myOrganizationIds.contains(b.getOrganizationId());
+                    boolean own = actor.isSystemAdmin() || myOrganizationIds.contains(b.getOrganizationId());
                     Organization organization = orgById.get(b.getOrganizationId());
                     return new BookingResponse(
                             b.getId(),

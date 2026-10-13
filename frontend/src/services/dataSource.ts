@@ -31,6 +31,9 @@ export interface DataSource {
   auth?: {
     login(email: string, password: string): Promise<void>
     logout(): Promise<void>
+    /** True when the last session check found a temporary password that must be changed first. */
+    passwordChangeRequired(): boolean
+    changePassword(currentPassword: string, newPassword: string): Promise<void>
   }
 
   /** Simulated users and resettable data. Demo mode only. */

@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '../components/ui/Button'
 import { errorMessage } from '../lib/errors'
+import { ChangePasswordPage } from '../pages/ChangePasswordPage'
 import { LoginPage } from '../pages/LoginPage'
 import { dataSource } from '../services'
 import { BookingError } from '../services/bookingError'
@@ -48,6 +49,8 @@ function initialRange(): DateRange {
 const covers = (outer: DateRange, inner: DateRange) => outer.start <= inner.start && inner.end <= outer.end
 
 const isUnauthenticated = (err: unknown) => err instanceof BookingError && err.code === 'UNAUTHENTICATED'
+const needsPasswordChange = (err: unknown) => err instanceof BookingError && err.code === 'PASSWORD_CHANGE_REQUIRED'
+const passwordChangeRequired = () => dataSource.auth?.passwordChangeRequired() ?? false
 
 function Centered({ children }: { children: ReactNode }) {
   return <div className="flex h-dvh flex-col items-center justify-center gap-3 px-4 text-center text-sm text-slate-500">{children}</div>
@@ -56,6 +59,8 @@ function Centered({ children }: { children: ReactNode }) {
 export function AppProvider({ children }: { children: ReactNode }) {
   // undefined: checking the session. null: a login is needed.
   const [userId, setUserId] = useState<string | null | undefined>(undefined)
+  // API mode: logged in with a temporary password, which must be replaced before anything else.
+  const [mustChangePassword, setMustChangePassword] = useState(false)
   const [data, setData] = useState<AppData | null>(null)
   const [range, setRange] = useState<DateRange>(initialRange)
   // Bumped to load again without changing user or range (retry, stale data).
@@ -84,6 +89,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const endSession = useCallback(() => {
     setUserId(null)
+    setMustChangePassword(false)
     setData(null)
     setBookingDraft(null)
     setDetailsBookingId(null)
@@ -93,6 +99,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const id = await dataSource.getSessionUserId()
       setLoadError(null)
+      setMustChangePassword(passwordChangeRequired())
       setUserId(id)
     } catch (err) {
       setLoadError(errorMessage(err))
@@ -102,7 +109,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
     dataSource.getSessionUserId().then(
-      (id) => !cancelled && setUserId(id),
+      (id) => {
+        if (cancelled) return
+        setMustChangePassword(passwordChangeRequired())
+        setUserId(id)
+      },
       (err: unknown) => !cancelled && setLoadError(errorMessage(err)),
     )
     return () => {
@@ -114,7 +125,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const loading = !!userId && loadedKey !== requestKey
 
   useEffect(() => {
-    if (!userId) return
+    if (!userId || mustChangePassword) return
     // Only the latest load may update state, so a slow response can't overwrite a newer one.
     let cancelled = false
     dataSource.load(range).then(
@@ -129,6 +140,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setLoadedKey(requestKey)
         if (isUnauthenticated(err)) {
           endSession()
+        } else if (needsPasswordChange(err)) {
+          setMustChangePassword(true)
         } else {
           // Shown full-screen before the first load, and as a toast over existing data after it.
           setLoadError(errorMessage(err))
@@ -139,7 +152,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [userId, range, requestKey, endSession, notify])
+  }, [userId, mustChangePassword, range, requestKey, endSession, notify])
 
   const updatePrefs = useCallback((next: Partial<CalendarPrefs>) => {
     setPrefs((p) => {
@@ -167,6 +180,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         result = await request()
       } catch (err) {
         if (isUnauthenticated(err)) endSession()
+        else if (needsPasswordChange(err)) setMustChangePassword(true)
         else if (err instanceof BookingError && (err.code === 'VERSION_CONFLICT' || err.code === 'INVALID_STATE')) {
           // Someone else changed the booking; show its current state.
           setReloadKey((k) => k + 1)
@@ -199,6 +213,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           endSession()
         }
       },
+      changePassword: dataSource.auth
+        ? async (currentPassword, newPassword) => {
+            try {
+              await dataSource.auth!.changePassword(currentPassword, newPassword)
+            } catch (err) {
+              if (isUnauthenticated(err)) endSession()
+              throw err
+            }
+          }
+        : undefined,
+      reload: () => setReloadKey((k) => k + 1),
       loading,
       setVisibleRange: (next) => setRange((prev) => (covers(prev, next) ? prev : next)),
 
@@ -243,6 +268,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dismissToast,
     }
   }, [data, userId, range, loading, prefs, bookingDraft, detailsBookingId, toasts, notify, dismissToast, endSession, updatePrefs])
+
+  if (userId && mustChangePassword && dataSource.auth) {
+    const { auth } = dataSource
+    return (
+      <ChangePasswordPage
+        onChange={async (currentPassword, newPassword) => {
+          await auth.changePassword(currentPassword, newPassword)
+          setMustChangePassword(false)
+          setReloadKey((k) => k + 1)
+        }}
+        onLogout={() => {
+          auth.logout().finally(endSession)
+        }}
+      />
+    )
+  }
 
   if (userId === null && dataSource.auth) {
     const { login } = dataSource.auth
