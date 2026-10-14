@@ -42,8 +42,12 @@ final class AdminDtos {
             @NotNull GlobalRole globalRole,
             List<@NotNull UserMembership> memberships) {}
 
-    /** Null fields are left unchanged. */
-    record UpdateUser(String email, String displayName, GlobalRole globalRole, UserStatus status) {}
+    /**
+     * Null fields are left unchanged. Disabling a user always cancels their future pending
+     * requests; {@code cancelFutureBookings: true} also cancels their future approved bookings.
+     */
+    record UpdateUser(
+            String email, String displayName, GlobalRole globalRole, UserStatus status, Boolean cancelFutureBookings) {}
 
     /** The temporary password is only ever returned in this response. */
     record UserWithPassword(AdminUser user, String temporaryPassword) {}
@@ -58,7 +62,12 @@ final class AdminDtos {
 
     record CreateOrganization(@NotBlank @Size(max = 120) String name) {}
 
-    record UpdateOrganization(@Size(min = 1, max = 120) String name, OrganizationStatus status) {}
+    /**
+     * Null fields are left unchanged. Archiving deletes the organization's pending invitations;
+     * its future bookings are cancelled only with {@code cancelFutureBookings: true}.
+     */
+    record UpdateOrganization(
+            @Size(min = 1, max = 120) String name, OrganizationStatus status, Boolean cancelFutureBookings) {}
 
     // ── Rooms ──────────────────────────────────────────────────────
 
@@ -84,7 +93,9 @@ final class AdminDtos {
             @NotNull @Pattern(regexp = "^#[0-9a-fA-F]{6}$") String color,
             @NotNull Permission defaultPermission,
             /** Ignored on create (always ACTIVE). */
-            RoomStatus status) {}
+            RoomStatus status,
+            /** With status DISABLED or ARCHIVED: also cancel the room's future bookings. Ignored otherwise. */
+            Boolean cancelFutureBookings) {}
 
     /** {@code permission: null} removes the override, so the room's default applies. */
     record SetRoomAccess(Permission permission) {}

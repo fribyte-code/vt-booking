@@ -1,6 +1,7 @@
 package no.vtvest.booking;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -64,6 +65,10 @@ class AccountManagementIntegrationTest extends IntegrationTest {
         mvc.perform(post("/api/me/password").session(session).with(withCsrf()).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"currentPassword\":\"%s\",\"newPassword\":\"kort\"}".formatted(temporary)))
                 .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/me/password").session(session).with(withCsrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"%s\",\"newPassword\":\"%s\"}".formatted(temporary, "x".repeat(129))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Passordet kan ha maks 128 tegn."));
         mvc.perform(post("/api/me/password").session(session).with(withCsrf()).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"currentPassword\":\"feil-passord-123\",\"newPassword\":\"mitt-eget-passord\"}"))
                 .andExpect(status().isBadRequest());
@@ -152,15 +157,21 @@ class AccountManagementIntegrationTest extends IntegrationTest {
         send(get(ORG_A_MEMBERS), KARI, null).andExpect(status().isForbidden());
         send(get("/api/organizations/10000000-0000-0000-0000-00000000000c/members"), JONAS, null).andExpect(status().isForbidden());
 
-        // New email: an account with a temporary password. Existing email: only the membership.
+        // New email: an account with a temporary password. Existing email: only an invitation,
+        // which Ola accepts (see InvitationIntegrationTest).
         send(post(ORG_A_MEMBERS), JONAS, "{\"email\":\"ny@example.test\",\"displayName\":\"Ny\",\"role\":\"MEMBER\"}")
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.accountCreated").value(true))
+                .andExpect(jsonPath("$.result").value("ADDED"))
                 .andExpect(jsonPath("$.temporaryPassword").isString());
         send(post(ORG_A_MEMBERS), JONAS, "{\"email\":\"ola@example.test\",\"role\":\"MEMBER\"}")
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.accountCreated").value(false))
-                .andExpect(jsonPath("$.temporaryPassword").doesNotExist());
+                .andExpect(jsonPath("$.result").value("INVITED"))
+                .andExpect(jsonPath("$.member").value(nullValue()))
+                .andExpect(jsonPath("$.temporaryPassword").value(nullValue()));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM memberships WHERE user_id = ? AND organization_id = ?",
+                Integer.class, OLA_ID, ORG_A)).isZero();
+        String invitationId = jdbc.queryForObject("SELECT id::text FROM membership_invitations WHERE user_id = ?", String.class, OLA_ID);
+        send(post("/api/me/invitations/" + invitationId + "/accept"), OLA, null).andExpect(status().isOk());
         // A globalRole in the body is ignored: the new account is an ordinary user.
         send(post(ORG_A_MEMBERS), JONAS, "{\"email\":\"sneaky@example.test\",\"displayName\":\"S\",\"role\":\"MEMBER\",\"globalRole\":\"SYSTEM_ADMIN\"}")
                 .andExpect(status().isCreated());

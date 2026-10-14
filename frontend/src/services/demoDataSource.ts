@@ -39,13 +39,25 @@ export function createDemoDataSource(store: KeyValueStore = browserStore()): Dat
       const { users } = await service.getData()
       return users.some((u) => u.id === userId) ? userId : (users[0]?.id ?? null)
     },
-    load: () => service.getData(),
+    load: () => service.getDataFor(userId),
+    listBookings: (range, roomId) => service.listBookings(range, roomId),
 
     createBooking: (input) => service.createBooking(userId, input),
-    approveBooking: (booking) => service.approveBooking(userId, booking.id),
+    approveBooking: (booking, comment) => service.approveBooking(userId, booking.id, comment),
     rejectBooking: (booking, reason) => service.rejectBooking(userId, booking.id, reason),
-    cancelBooking: (booking) => service.cancelBooking(userId, booking.id),
+    cancelBooking: (booking, reason) => service.cancelBooking(userId, booking.id, reason),
+    updateBooking: (booking, input) => service.updateBooking(userId, booking.id, input),
     markDecisionsSeen: () => service.markDecisionsSeen(userId),
+
+    series: {
+      preview: (input) => service.previewSeries(userId, input),
+      create: (input) => service.createSeries(userId, input),
+      list: (seriesId) => service.listSeries(userId, seriesId),
+      update: (from, input, options) => service.updateSeries(userId, from.seriesId ?? '', from.id, input, options),
+      cancel: (seriesId, { from, reason }) => service.cancelSeries(userId, seriesId, from?.id, reason),
+      approve: (seriesId, comment) => service.approveSeries(userId, seriesId, comment),
+      reject: (seriesId, reason) => service.rejectSeries(userId, seriesId, reason),
+    },
 
     demo: {
       switchUser(id) {

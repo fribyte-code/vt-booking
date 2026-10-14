@@ -5,6 +5,8 @@ import static no.vtvest.booking.admin.AdminDtos.*;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import no.vtvest.booking.booking.BookingResponse;
+import no.vtvest.booking.booking.BookingService;
 import no.vtvest.booking.security.CurrentUser;
 import no.vtvest.booking.user.User;
 import org.springframework.http.HttpStatus;
@@ -71,10 +73,16 @@ class AdminController {
         return admin.setMembership(id, organizationId, body.role());
     }
 
+    /** Also cancels the user's future pending requests for the organization. */
     @DeleteMapping("/users/{id}/memberships/{organizationId}")
     AdminUser removeMembership(@PathVariable UUID id, @PathVariable UUID organizationId) {
-        requireAdmin();
-        return admin.removeMembership(id, organizationId);
+        return admin.removeMembership(requireAdmin(), id, organizationId);
+    }
+
+    /** Future approved and pending bookings the user requested: what disabling the user may cancel. */
+    @GetMapping("/users/{id}/future-bookings")
+    List<BookingResponse> userFutureBookings(@PathVariable UUID id) {
+        return admin.futureBookings(requireAdmin(), BookingService.Scope.REQUESTER, id);
     }
 
     // ── Organizations ──────────────────────────────────────────────
@@ -94,8 +102,12 @@ class AdminController {
 
     @PatchMapping("/organizations/{id}")
     AdminOrganization updateOrganization(@PathVariable UUID id, @Valid @RequestBody UpdateOrganization body) {
-        requireAdmin();
-        return admin.updateOrganization(id, body);
+        return admin.updateOrganization(requireAdmin(), id, body);
+    }
+
+    @GetMapping("/organizations/{id}/future-bookings")
+    List<BookingResponse> organizationFutureBookings(@PathVariable UUID id) {
+        return admin.futureBookings(requireAdmin(), BookingService.Scope.ORGANIZATION, id);
     }
 
     // ── Rooms ──────────────────────────────────────────────────────
@@ -115,8 +127,12 @@ class AdminController {
 
     @PutMapping("/rooms/{id}")
     AdminRoom updateRoom(@PathVariable UUID id, @Valid @RequestBody RoomFields body) {
-        requireAdmin();
-        return admin.updateRoom(id, body);
+        return admin.updateRoom(requireAdmin(), id, body);
+    }
+
+    @GetMapping("/rooms/{id}/future-bookings")
+    List<BookingResponse> roomFutureBookings(@PathVariable UUID id) {
+        return admin.futureBookings(requireAdmin(), BookingService.Scope.ROOM, id);
     }
 
     @PutMapping("/rooms/{id}/access/{organizationId}")

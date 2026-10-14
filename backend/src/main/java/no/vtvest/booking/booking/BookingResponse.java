@@ -6,6 +6,8 @@ import java.util.UUID;
 public record BookingResponse(
         UUID id,
         UUID roomId,
+        /** Also for archived rooms, which GET /api/rooms leaves out. */
+        String roomName,
         UUID organizationId,
         String organizationName,
         /** Only included for the booking's own organization and administrators. */
@@ -28,6 +30,16 @@ public record BookingResponse(
         String decisionComment,
         Instant cancelledAt,
         /** Only included for the booking's own organization and administrators. */
+        UUID cancelledById,
+        /** Only included for the booking's own organization and administrators. */
+        String cancelledByName,
+        /** Only included for the booking's own organization and administrators. */
         String cancellationReason,
-        /** Send back with approve, reject and cancel (optimistic locking). */
+        /** When the booking was last edited, or null. */
+        Instant updatedAt,
+        /** Only included for the booking's own organization and administrators. */
+        String updatedByName,
+        /** Shared by the occurrences of a weekly series, otherwise null. */
+        UUID seriesId,
+        /** Send back with edit, approve, reject and cancel (optimistic locking). */
         int version) {}

@@ -43,7 +43,7 @@ class BootstrapAdminCommand {
                 : null);
         if (name == null) return USAGE;
 
-        String password = askPassword(email);
+        String password = askPassword();
         if (password == null) return USAGE;
 
         try {
@@ -74,15 +74,16 @@ class BootstrapAdminCommand {
         return null;
     }
 
-    private String askPassword(String email) {
-        terminal.println("Passordet må ha minst " + PasswordPolicy.MIN_LENGTH + " tegn. Det vises ikke mens du skriver.");
+    private String askPassword() {
+        terminal.println("Passordet må ha " + PasswordPolicy.MIN_LENGTH + " til " + PasswordPolicy.MAX_LENGTH
+                + " tegn. Det vises ikke mens du skriver.");
         for (int i = 0; i < ATTEMPTS; i++) {
             char[] first = terminal.readPassword("Passord: ");
             if (first == null) return null;
             char[] second = null;
             try {
                 String password = new String(first);
-                String problem = PasswordPolicy.problem(password, email).orElse(null);
+                String problem = PasswordPolicy.problem(password).orElse(null);
                 if (problem != null) {
                     terminal.println(problem);
                     continue;

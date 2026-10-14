@@ -1,12 +1,12 @@
-import { CalendarX2, Plus } from 'lucide-react'
+import { CalendarX2, Pencil, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { BookingListItem, EmptyState } from '../components/booking/BookingListItem'
+import { CancelBookingDialog } from '../components/booking/CancelBookingDialog'
 import { Button } from '../components/ui/Button'
-import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { Tabs } from '../components/ui/Tabs'
 import { useApp } from '../hooks/useApp'
-import { formatDate, formatTimeRange, isFuture } from '../lib/dates'
-import { errorMessage } from '../lib/errors'
+import { isFuture } from '../lib/dates'
+import { canChangeBooking, isExpiredRequest, isOpenForChanges } from '../services/bookingRules'
 import type { Booking } from '../types'
 
 type TabId = 'upcoming' | 'pending' | 'rejected' | 'past'
@@ -15,7 +15,7 @@ const emptyText: Record<TabId, string> = {
   upcoming: 'Du har ingen kommende bookinger.',
   pending: 'Du har ingen søknader som venter på behandling.',
   rejected: 'Du har ingen avslåtte søknader.',
-  past: 'Ingen tidligere eller kansellerte bookinger.',
+  past: 'Ingen tidligere, kansellerte eller utløpte bookinger.',
 }
 
 export function MyBookingsPage() {
@@ -27,10 +27,12 @@ export function MyBookingsPage() {
   const byStart = (a: Booking, b: Booking) => a.start.localeCompare(b.start)
   const groups: Record<TabId, Booking[]> = {
     upcoming: mine.filter((b) => b.status === 'APPROVED' && isFuture(b.end)).sort(byStart),
-    pending: mine.filter((b) => b.status === 'PENDING').sort(byStart),
+    pending: mine.filter((b) => b.status === 'PENDING' && !isExpiredRequest(b)).sort(byStart),
     rejected: mine.filter((b) => b.status === 'REJECTED').sort(byStart),
     past: mine
-      .filter((b) => b.status === 'CANCELLED' || (b.status === 'APPROVED' && !isFuture(b.end)))
+      .filter(
+        (b) => b.status === 'CANCELLED' || isExpiredRequest(b) || (b.status === 'APPROVED' && !isFuture(b.end)),
+      )
       .sort((a, b) => byStart(b, a)),
   }
 
@@ -72,16 +74,21 @@ export function MyBookingsPage() {
           ) : (
             <ul className="space-y-3">
               {groups[tab].map((b) => {
-                const cancellable = (b.status === 'APPROVED' || b.status === 'PENDING') && isFuture(b.start)
+                const changeable = canChangeBooking(app.currentUser, b) && isOpenForChanges(b)
                 return (
                   <BookingListItem
                     key={b.id}
                     booking={b}
                     actions={
-                      cancellable && (
-                        <Button size="sm" variant="danger" onClick={() => setCancelling(b)}>
-                          {b.status === 'PENDING' ? 'Trekk tilbake' : 'Kanseller'}
-                        </Button>
+                      changeable && (
+                        <>
+                          <Button size="sm" onClick={() => app.openBookingDialog({ bookingId: b.id })}>
+                            <Pencil className="size-4" /> Endre
+                          </Button>
+                          <Button size="sm" variant="danger" onClick={() => setCancelling(b)}>
+                            {b.status === 'PENDING' ? 'Trekk tilbake' : 'Kanseller'}
+                          </Button>
+                        </>
                       )
                     }
                   >
@@ -90,9 +97,20 @@ export function MyBookingsPage() {
                         Begrunnelse: {b.decisionComment}
                       </p>
                     )}
+                    {b.status === 'APPROVED' && b.decisionComment && (
+                      <p className="mt-2 text-sm text-slate-600">Kommentar fra administrator: {b.decisionComment}</p>
+                    )}
+                    {b.status === 'CANCELLED' && b.cancelledById && b.cancelledById !== b.requestedById && (
+                      <p className="mt-2 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">
+                        Kansellert av {b.cancelledByName ?? app.user(b.cancelledById)?.name ?? 'en administrator'}
+                        {b.cancellationReason && `: ${b.cancellationReason}`}
+                      </p>
+                    )}
                     {b.status === 'PENDING' && (
                       <p className="mt-2 text-xs text-slate-500">
-                        Tidsrommet er ikke reservert før søknaden er godkjent.
+                        {isExpiredRequest(b)
+                          ? 'Søknaden ble ikke behandlet før tidspunktet, og har utløpt.'
+                          : 'Tidsrommet er ikke reservert før søknaden er godkjent.'}
                       </p>
                     )}
                   </BookingListItem>
@@ -103,26 +121,7 @@ export function MyBookingsPage() {
         </div>
       </div>
 
-      {cancelling && (
-        <ConfirmDialog
-          title={cancelling.status === 'PENDING' ? 'Trekk tilbake søknad?' : 'Kanseller booking?'}
-          confirmLabel={cancelling.status === 'PENDING' ? 'Trekk tilbake' : 'Kanseller'}
-          destructive
-          onClose={() => setCancelling(null)}
-          onConfirm={async () => {
-            try {
-              await app.cancelBooking(cancelling.id)
-              app.notify(`«${cancelling.title}» er kansellert.`, 'info')
-            } catch (err) {
-              app.notify(errorMessage(err), 'error')
-            }
-            setCancelling(null)
-          }}
-        >
-          «{cancelling.title}» i {app.room(cancelling.roomId)?.name}, {formatDate(cancelling.start)}{' '}
-          {formatTimeRange(cancelling.start, cancelling.end)}.
-        </ConfirmDialog>
-      )}
+      {cancelling && <CancelBookingDialog booking={cancelling} onClose={() => setCancelling(null)} />}
     </div>
   )
 }

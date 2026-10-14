@@ -1,6 +1,6 @@
 import { cn } from '../../lib/cn'
-import { permissionLabels } from '../../services/bookingRules'
-import type { BookingStatus, Permission } from '../../types'
+import { isExpiredRequest, permissionLabels } from '../../services/bookingRules'
+import type { Booking, BookingStatus, Permission } from '../../types'
 
 const statusStyles: Record<BookingStatus, { label: string; className: string }> = {
   APPROVED: { label: 'Bekreftet', className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },
@@ -11,8 +11,11 @@ const statusStyles: Record<BookingStatus, { label: string; className: string }> 
 
 const pill = 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ring-1 ring-inset'
 
-export function StatusBadge({ status }: { status: BookingStatus }) {
-  const { label, className } = statusStyles[status]
+const expiredStyle = { label: 'Utløpt', className: 'bg-slate-100 text-slate-600 ring-slate-500/20' }
+
+/** The booking's status, with requests that were never decided in time shown as expired. */
+export function StatusBadge({ booking }: { booking: Pick<Booking, 'status' | 'start'> }) {
+  const { label, className } = isExpiredRequest(booking) ? expiredStyle : statusStyles[booking.status]
   return <span className={cn(pill, className)}>{label}</span>
 }
 

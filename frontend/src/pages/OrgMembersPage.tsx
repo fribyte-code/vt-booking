@@ -1,4 +1,4 @@
-import { ShieldAlert, Trash2, UserPlus } from 'lucide-react'
+import { MailX, ShieldAlert, Trash2, UserPlus } from 'lucide-react'
 import { type FormEvent, useCallback, useId, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Chip } from '../components/admin/Chip'
@@ -9,8 +9,9 @@ import { Button } from '../components/ui/Button'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { Alert, Field, Input, Select } from '../components/ui/fields'
 import { useApp } from '../hooks/useApp'
+import { formatDateTime } from '../lib/dates'
 import { errorMessage } from '../lib/errors'
-import { type Member, type MembershipRole, membersApi, roleLabels } from '../services/adminApi'
+import { type Member, type MembershipRole, membersApi, type OrgInvitation, roleLabels } from '../services/adminApi'
 
 /**
  * Members of an organization, for its ORG_ADMINs (and system administrators). API mode only.
@@ -59,17 +60,17 @@ export function OrgMembersPage() {
             </Select>
           )}
         </div>
-        <Members key={orgId} orgId={orgId} orgName={manageable.find((o) => o.id === orgId)?.name ?? ''} />
+        <Members key={orgId} orgId={orgId} orgName={manageable.find((o) => o.id === orgId)?.name ?? ''} isSystemAdmin={isSystemAdmin} />
       </div>
     </div>
   )
 }
 
-function Members({ orgId, orgName }: { orgId: string; orgName: string }) {
+function Members({ orgId, orgName, isSystemAdmin }: { orgId: string; orgName: string; isSystemAdmin: boolean }) {
   const app = useApp()
   const id = useId()
-  const load = useCallback(() => membersApi.list(orgId), [orgId])
-  const { data: members, error, reload } = useAdminData(load)
+  const load = useCallback(() => Promise.all([membersApi.list(orgId), membersApi.invitations(orgId)]), [orgId])
+  const { data, error, reload } = useAdminData(load)
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [role, setRole] = useState<MembershipRole>('MEMBER')
@@ -77,9 +78,11 @@ function Members({ orgId, orgName }: { orgId: string; orgName: string }) {
   const [actionError, setActionError] = useState<string | null>(null)
   const [shown, setShown] = useState<{ name: string; email: string; password: string } | null>(null)
   const [removing, setRemoving] = useState<Member | null>(null)
+  const [withdrawing, setWithdrawing] = useState<OrgInvitation | null>(null)
 
   if (error) return <Alert tone="error">{error}</Alert>
-  if (!members) return <p className="text-sm text-slate-500">Laster medlemmer …</p>
+  if (!data) return <p className="text-sm text-slate-500">Laster medlemmer …</p>
+  const [members, invitations] = data
 
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true)
@@ -101,7 +104,9 @@ function Members({ orgId, orgName }: { orgId: string; orgName: string }) {
     e.preventDefault()
     await run(async () => {
       const result = await membersApi.add(orgId, { email, displayName: name, role })
-      if (result.temporaryPassword) {
+      if (result.result === 'INVITED') {
+        app.notify('Invitasjon sendt. Personen må godta den når de logger inn.')
+      } else if (result.temporaryPassword) {
         setShown({ name: result.member.displayName, email: result.member.email, password: result.temporaryPassword })
       } else {
         app.notify(`${result.member.displayName} er lagt til i ${orgName}.`)
@@ -131,8 +136,10 @@ function Members({ orgId, orgName }: { orgId: string; orgName: string }) {
           </Field>
         </div>
         <p className="text-xs text-slate-500">
-          Har personen allerede en bruker, blir hen lagt til med en gang. Ellers opprettes en ny bruker med et midlertidig passord som du
-          gir videre.
+          {isSystemAdmin
+            ? 'Har personen allerede en bruker, blir hen lagt til med en gang.'
+            : 'Har personen allerede en bruker, får hen en invitasjon som må godtas ved neste innlogging.'}{' '}
+          Ellers opprettes en ny bruker med et midlertidig passord som du gir videre.
         </p>
         <div className="flex justify-end">
           <Button type="submit" variant="primary" disabled={busy || !email.trim()}>
@@ -171,6 +178,45 @@ function Members({ orgId, orgName }: { orgId: string; orgName: string }) {
         ))}
       </ul>
 
+      {invitations.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-sm font-semibold text-slate-900">Ventende invitasjoner</h2>
+          <ul className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
+            {invitations.map((inv) => (
+              <li key={inv.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900">
+                    <span className="truncate">{inv.email}</span>
+                    <Chip label={roleLabels[inv.role]} />
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Invitert {formatDateTime(inv.createdAt)}
+                    {inv.invitedByName && ` av ${inv.invitedByName}`}
+                  </p>
+                </div>
+                <Button size="sm" variant="danger" disabled={busy} onClick={() => setWithdrawing(inv)}>
+                  <MailX className="size-4" /> Trekk tilbake
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {withdrawing && (
+        <ConfirmDialog
+          title="Trekke tilbake invitasjonen?"
+          confirmLabel="Trekk tilbake"
+          destructive
+          onClose={() => setWithdrawing(null)}
+          onConfirm={async () => {
+            await run(() => membersApi.withdrawInvitation(orgId, withdrawing.id))
+            setWithdrawing(null)
+          }}
+        >
+          {withdrawing.email} blir ikke medlem av {orgName}. Du kan invitere på nytt senere.
+        </ConfirmDialog>
+      )}
       {removing && (
         <ConfirmDialog
           title="Fjerne medlem?"
@@ -182,7 +228,8 @@ function Members({ orgId, orgName }: { orgId: string; orgName: string }) {
             setRemoving(null)
           }}
         >
-          {removing.displayName} mister tilgangen til å booke for {orgName}. Brukeren slettes ikke.
+          {removing.displayName} mister tilgangen til å booke for {orgName}. Ventende søknader hen har sendt for {orgName}, trekkes
+          tilbake. Godkjente bookinger og brukeren beholdes.
         </ConfirmDialog>
       )}
       {shown && <TemporaryPasswordDialog {...shown} onClose={() => setShown(null)} />}

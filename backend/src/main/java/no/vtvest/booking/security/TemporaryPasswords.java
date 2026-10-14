@@ -21,7 +21,7 @@ public final class TemporaryPasswords {
                 if (i > 0 && i % 4 == 0) password.append('-');
                 password.append(ALPHABET.charAt(RANDOM.nextInt(ALPHABET.length())));
             }
-            if (PasswordPolicy.problem(password.toString(), null).isEmpty()) {
+            if (PasswordPolicy.problem(password.toString()).isEmpty()) {
                 return password.toString();
             }
         }

@@ -42,6 +42,7 @@ class OrgMemberController {
         return members.members(currentUser.require(), organizationId);
     }
 
+    /** 201 both when the member was added and when an existing account was invited; see {@link AddedMember}. */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     AddedMember add(@PathVariable UUID organizationId, @Valid @RequestBody AddMember body) {

@@ -14,6 +14,9 @@ interface ModalProps {
   size?: 'sm' | 'md' | 'lg'
 }
 
+/** Open modals, innermost last. Only the innermost reacts to Escape; scrolling stays locked until all close. */
+const openModals: object[] = []
+
 const widths = { sm: 'sm:max-w-sm', md: 'sm:max-w-lg', lg: 'sm:max-w-2xl' }
 
 export function Modal({ title, onClose, children, footer, leading, size = 'md' }: ModalProps) {
@@ -31,14 +34,17 @@ export function Modal({ title, onClose, children, footer, leading, size = 'md' }
     const firstField = panel?.querySelector<HTMLElement>('[data-autofocus], input, select, textarea')
     ;(firstField ?? panel)?.focus()
 
+    const self = {}
+    openModals.push(self)
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current()
+      if (e.key === 'Escape' && openModals[openModals.length - 1] === self) onCloseRef.current()
     }
     document.addEventListener('keydown', onKey)
     document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = ''
+      openModals.splice(openModals.indexOf(self), 1)
+      if (openModals.length === 0) document.body.style.overflow = ''
       previous?.focus?.()
     }
   }, [])

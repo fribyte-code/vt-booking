@@ -56,4 +56,46 @@ describe('demo data source', () => {
     const pending = (await source.load(range)).bookings.find((b) => b.status === 'PENDING')!
     await expect(source.rejectBooking(pending, '  ')).rejects.toMatchObject({ code: 'VALIDATION' })
   })
+
+  it('edits bookings and manages series as the simulated user, without API-only capabilities', async () => {
+    const source = createDemoDataSource(memoryStore())
+    expect(source.invitations).toBeUndefined()
+
+    const start = new Date(Date.now() + 2 * 86_400_000)
+    start.setHours(6, 0, 0, 0)
+    const at = (weeks: number, hours = 0) => new Date(start.getTime() + weeks * 7 * 86_400_000 + hours * 3_600_000)
+    const until = at(2)
+    const input = {
+      roomId: 'room-a',
+      organizationId: 'org-a',
+      title: 'Øving',
+      start: start.toISOString(),
+      end: at(0, 1).toISOString(),
+      recurrence: {
+        intervalWeeks: 1,
+        until: `${until.getFullYear()}-${String(until.getMonth() + 1).padStart(2, '0')}-${String(until.getDate()).padStart(2, '0')}`,
+      },
+    }
+    expect(await source.series.preview(input)).toHaveLength(3)
+    const { seriesId, created } = await source.series.create(input)
+
+    const moved = await source.updateBooking(created[0], {
+      roomId: 'room-a',
+      title: 'Flyttet',
+      start: at(0, 1).toISOString(),
+      end: at(0, 2).toISOString(),
+    })
+    expect(moved).toMatchObject({ title: 'Flyttet', status: 'APPROVED', seriesId })
+
+    const cancelled = await source.series.cancel(seriesId, { from: created[1], reason: 'Ferie' })
+    expect(cancelled.map((b) => b.id)).toEqual([created[1].id, created[2].id])
+    expect((await source.series.list(seriesId)).map((b) => b.status)).toEqual(['APPROVED', 'CANCELLED', 'CANCELLED'])
+  })
+
+  it("hides other organizations' requests, like the API", async () => {
+    const source = createDemoDataSource(memoryStore())
+    const { bookings, users } = await source.load({ start: '', end: '' })
+    const me = users.find((u) => u.id === 'user-kari')!
+    expect(bookings.some((b) => b.status !== 'APPROVED' && !me.organizationIds.includes(b.organizationId))).toBe(false)
+  })
 })

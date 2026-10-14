@@ -2,6 +2,7 @@ package no.vtvest.booking.organization;
 
 import java.util.List;
 import java.util.UUID;
+import no.vtvest.booking.booking.BookingService;
 import no.vtvest.booking.common.ApiException;
 import no.vtvest.booking.common.ErrorCode;
 import no.vtvest.booking.user.AccountService;
@@ -15,31 +16,50 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Member management for one organization, by its ORG_ADMINs (or a SYSTEM_ADMIN).
  *
- * An ORG_ADMIN can add members (creating the account with a temporary password if the email is
- * new), set MEMBER or ORG_ADMIN, and remove members, in organizations they administer only. They
- * cannot change anyone's email, status, global role or password, cannot touch a SYSTEM_ADMIN's
- * membership, and cannot remove or demote the organization's last ORG_ADMIN.
+ * An ORG_ADMIN can add members, set MEMBER or ORG_ADMIN, and remove members, in active
+ * organizations they administer only. A new email gets an account with a temporary password and
+ * the membership at once; an existing account only gets an invitation that its owner accepts or
+ * declines ({@link InvitationService}), so an ORG_ADMIN can't pull anyone into their organization or
+ * learn anything about existing accounts. They cannot change anyone's email, status, global role or
+ * password, cannot touch a SYSTEM_ADMIN's membership, and cannot remove or demote the
+ * organization's last ORG_ADMIN.
  */
 @Service
 public class OrgMemberService {
 
     public record Member(UUID userId, String displayName, String email, MembershipRole role, UserStatus status) {}
 
-    /** {@code temporaryPassword} is set only when a new account was created, and only returned this once. */
-    public record AddedMember(Member member, boolean accountCreated, String temporaryPassword) {}
+    public enum AddResult {
+        /** The membership exists now: a new account, or an existing one added by a SYSTEM_ADMIN. */
+        ADDED,
+        /** The email belongs to an existing account, which got an invitation. Nothing else is revealed. */
+        INVITED
+    }
+
+    /**
+     * ADDED: {@code member} is set, and {@code temporaryPassword} too when a new account was created
+     * (returned only this once). INVITED: both are null, whatever the existing account looks like.
+     */
+    public record AddedMember(AddResult result, Member member, String temporaryPassword) {}
 
     private final JdbcTemplate jdbc;
     private final AccountService accounts;
+    private final BookingService bookingService;
 
-    OrgMemberService(JdbcTemplate jdbc, AccountService accounts) {
+    OrgMemberService(JdbcTemplate jdbc, AccountService accounts, BookingService bookingService) {
         this.jdbc = jdbc;
         this.accounts = accounts;
+        this.bookingService = bookingService;
     }
 
-    /** Organizations of which the actor is ORG_ADMIN (all active ones for a SYSTEM_ADMIN) and the organization exists. */
+    /**
+     * The organization exists and the actor may manage its members: a SYSTEM_ADMIN always, an
+     * ORG_ADMIN of the organization only while it is active.
+     */
     void requireOrgAdmin(User actor, UUID organizationId) {
-        Boolean exists = jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM organizations WHERE id = ?)", Boolean.class, organizationId);
-        if (!Boolean.TRUE.equals(exists)) {
+        String status = jdbc.query("SELECT status FROM organizations WHERE id = ?",
+                (rs, i) -> rs.getString("status"), organizationId).stream().findFirst().orElse(null);
+        if (status == null) {
             throw new ApiException(ErrorCode.NOT_FOUND, "Organisasjonen finnes ikke.");
         }
         if (actor.isSystemAdmin()) return;
@@ -48,6 +68,9 @@ public class OrgMemberService {
                 """, Boolean.class, actor.getId(), organizationId);
         if (!Boolean.TRUE.equals(orgAdmin)) {
             throw new ApiException(ErrorCode.FORBIDDEN, "Bare organisasjonens administratorer kan administrere medlemmer.");
+        }
+        if (!OrganizationStatus.ACTIVE.name().equals(status)) {
+            throw new ApiException(ErrorCode.INVALID_STATE, "Organisasjonen er arkivert.");
         }
     }
 
@@ -70,18 +93,31 @@ public class OrgMemberService {
         String normalized = AccountService.normalizeEmail(email);
         UUID userId = jdbc.query("SELECT id FROM users WHERE lower(email) = lower(?)",
                 (rs, i) -> rs.getObject("id", UUID.class), normalized).stream().findFirst().orElse(null);
-        String temporaryPassword = null;
         if (userId == null) {
             AccountService.CreatedAccount created =
                     accounts.createWithTemporaryPassword(normalized, displayName, GlobalRole.USER);
-            userId = created.userId();
-            temporaryPassword = created.temporaryPassword();
-        } else if (member(organizationId, userId) != null) {
+            insertMembership(created.userId(), organizationId, role);
+            return new AddedMember(AddResult.ADDED, member(organizationId, created.userId()), created.temporaryPassword());
+        }
+        if (member(organizationId, userId) != null) {
             throw new ApiException(ErrorCode.CONFLICT, "Brukeren er allerede medlem av organisasjonen.");
         }
+        if (actor.isSystemAdmin()) {
+            insertMembership(userId, organizationId, role);
+            jdbc.update("DELETE FROM membership_invitations WHERE user_id = ? AND organization_id = ?", userId, organizationId);
+            return new AddedMember(AddResult.ADDED, member(organizationId, userId), null);
+        }
+        // Same response whatever the account's status or role: inviting reveals nothing about it.
+        jdbc.update("""
+                INSERT INTO membership_invitations (organization_id, user_id, role, invited_by_id) VALUES (?, ?, ?, ?)
+                ON CONFLICT (organization_id, user_id) DO UPDATE SET role = EXCLUDED.role, invited_by_id = EXCLUDED.invited_by_id
+                """, organizationId, userId, role.name(), actor.getId());
+        return new AddedMember(AddResult.INVITED, null, null);
+    }
+
+    private void insertMembership(UUID userId, UUID organizationId, MembershipRole role) {
         jdbc.update("INSERT INTO memberships (user_id, organization_id, role) VALUES (?, ?, ?)",
                 userId, organizationId, role.name());
-        return new AddedMember(member(organizationId, userId), temporaryPassword != null, temporaryPassword);
     }
 
     @Transactional
@@ -103,6 +139,8 @@ public class OrgMemberService {
             requireAnotherOrgAdmin(actor, organizationId, userId);
         }
         jdbc.update("DELETE FROM memberships WHERE user_id = ? AND organization_id = ?", userId, organizationId);
+        // Their pending requests for the organization can no longer be approved. Approved bookings stay.
+        bookingService.cancelFutureRequestsOfFormerMember(actor, userId, organizationId);
     }
 
     private Member requireChangeable(User actor, UUID organizationId, UUID userId) {

@@ -2,6 +2,7 @@ package no.vtvest.booking;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -240,18 +241,58 @@ class BookingWorkflowIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    void cancellationReasonAndCancellerAreShownToTheOwnOrganizationOnly() throws Exception {
+        UUID id = book(KARI, ROOM_A, ORG_A, at(7, 8), at(7, 9));
+        postAs(JONAS, "/api/bookings/" + id + "/cancel", "{\"version\":0,\"reason\":\"Styret trenger rommet\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cancellationReason").value("Styret trenger rommet"))
+                .andExpect(jsonPath("$.cancelledById").value(JONAS))
+                .andExpect(jsonPath("$.cancelledByName").isNotEmpty());
+
+        mvc.perform(get("/api/bookings/mine").with(user(KARI)))
+                .andExpect(jsonPath("$[0].status").value("CANCELLED"))
+                .andExpect(jsonPath("$[0].cancellationReason").value("Styret trenger rommet"))
+                .andExpect(jsonPath("$[0].cancelledById").value(JONAS));
+        // Other organizations can't see a cancelled booking at all, so never the reason or who cancelled.
+        mvc.perform(get("/api/bookings/" + id).with(user(OLA))).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void approvalCommentIsRecorded() throws Exception {
+        UUID id = book(KARI, STORSALEN, ORG_A, at(7, 12), at(7, 14));
+        postAs(ADMIN, "/api/bookings/" + id + "/approve", "{\"version\":0,\"comment\":\"Husk å rydde\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.decisionComment").value("Husk å rydde"));
+    }
+
+    // ── Expired requests ────────────────────────────────────────────
+
+    @Test
+    void expiredRequestsLeaveTheQueueAndCalendarButStayInMyBookings() throws Exception {
+        UUID expired = insertBooking(STORSALEN, ORG_A, KARI_ID, Instant.now().minus(30, ChronoUnit.MINUTES), "PENDING");
+        UUID upcoming = book(KARI, STORSALEN, ORG_A, at(7, 12), at(7, 14));
+        UUID approved = insertBooking(ROOM_A, ORG_A, KARI_ID, Instant.now().minus(30, ChronoUnit.MINUTES), "APPROVED");
+
+        mvc.perform(get("/api/bookings/requests").with(user(ADMIN)))
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(upcoming.toString()));
+
+        String from = Instant.now().minus(1, ChronoUnit.DAYS).toString();
+        String to = Instant.now().plus(1, ChronoUnit.DAYS).toString();
+        mvc.perform(get("/api/bookings").param("from", from).param("to", to).with(user(KARI)))
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(approved.toString()));
+
+        mvc.perform(get("/api/bookings/mine").with(user(KARI)))
+                .andExpect(jsonPath("$[?(@.id == '%s')].status".formatted(expired)).value("PENDING"));
+        // It can no longer be approved or withdrawn.
+        approve(ADMIN, expired).andExpect(status().isConflict());
+        cancel(KARI, expired).andExpect(status().isConflict());
+    }
+
+    @Test
     void unknownBookingIsNotFound() throws Exception {
         postAs(ADMIN, "/api/bookings/" + UUID.randomUUID() + "/approve", "{\"version\":0}")
                 .andExpect(status().isNotFound());
-    }
-
-    /** Inserts a one-hour booking directly, e.g. one that has already started. */
-    private UUID insertBooking(UUID roomId, UUID orgId, UUID requesterId, Instant start, String status) {
-        return jdbc.queryForObject("""
-                INSERT INTO bookings (room_id, organization_id, requested_by_id, title, start_at, end_at, status, requires_approval)
-                VALUES (?, ?, ?, 'Direkte', ?::timestamptz, ?::timestamptz, ?, ?)
-                RETURNING id
-                """, UUID.class, roomId, orgId, requesterId, start.toString(),
-                start.plus(1, ChronoUnit.HOURS).toString(), status, status.equals("PENDING"));
     }
 }

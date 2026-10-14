@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '../components/ui/Button'
 import { errorMessage } from '../lib/errors'
+import { roomInfo } from '../lib/rooms'
 import { ChangePasswordPage } from '../pages/ChangePasswordPage'
 import { LoginPage } from '../pages/LoginPage'
 import { dataSource } from '../services'
@@ -48,6 +49,12 @@ function initialRange(): DateRange {
 
 const covers = (outer: DateRange, inner: DateRange) => outer.start <= inner.start && inner.end <= outer.end
 
+// Read-only calls that only need the data source. Defined once, so effects that depend on them
+// (availability check, series preview and list) don't re-run on every provider render.
+const listBookings: AppContextValue['listBookings'] = (range, roomId) => dataSource.listBookings(range, roomId)
+const previewSeries: AppContextValue['previewSeries'] = (input) => dataSource.series.preview(input)
+const listSeries: AppContextValue['listSeries'] = (seriesId) => dataSource.series.list(seriesId)
+
 const isUnauthenticated = (err: unknown) => err instanceof BookingError && err.code === 'UNAUTHENTICATED'
 const needsPasswordChange = (err: unknown) => err instanceof BookingError && err.code === 'PASSWORD_CHANGE_REQUIRED'
 const passwordChangeRequired = () => dataSource.auth?.passwordChangeRequired() ?? false
@@ -73,6 +80,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [bookingDraft, setBookingDraft] = useState<BookingDraft | null>(null)
   const [detailsBookingId, setDetailsBookingId] = useState<string | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
+  // Callers waiting for the next completed load (after a mutation). All loads go through the one
+  // effect below, so only the latest one updates the data and a slow older one can't overwrite it.
+  const [loadWaiters] = useState(() => new Set<() => void>())
+  const settleWaiters = useCallback(() => {
+    const waiting = [...loadWaiters]
+    loadWaiters.clear()
+    waiting.forEach((resolve) => resolve())
+  }, [loadWaiters])
+  const reloadAndWait = useCallback(
+    () =>
+      new Promise<void>((resolve) => {
+        loadWaiters.add(resolve)
+        setReloadKey((k) => k + 1)
+      }),
+    [loadWaiters],
+  )
 
   const dismissToast = useCallback((id: number) => {
     setToasts((ts) => ts.filter((t) => t.id !== id))
@@ -93,7 +116,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setData(null)
     setBookingDraft(null)
     setDetailsBookingId(null)
-  }, [])
+    settleWaiters()
+  }, [settleWaiters])
 
   const checkSession = useCallback(async () => {
     try {
@@ -134,10 +158,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setData(next)
         setLoadError(null)
         setLoadedKey(requestKey)
+        settleWaiters()
       },
       (err: unknown) => {
         if (cancelled) return
         setLoadedKey(requestKey)
+        settleWaiters()
         if (isUnauthenticated(err)) {
           endSession()
         } else if (needsPasswordChange(err)) {
@@ -152,7 +178,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [userId, mustChangePassword, range, requestKey, endSession, notify])
+  }, [userId, mustChangePassword, range, requestKey, endSession, notify, settleWaiters])
 
   const updatePrefs = useCallback((next: Partial<CalendarPrefs>) => {
     setPrefs((p) => {
@@ -173,27 +199,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return found
     }
 
-    // Each mutation reloads the data set. An expired session sends the user back to the login.
+    // An expired session sends the user back to the login. When someone else changed the booking
+    // (or the server hit a concurrent write), reload so the user sees the current state and can retry.
+    const handleError = (err: unknown): never => {
+      if (isUnauthenticated(err)) endSession()
+      else if (needsPasswordChange(err)) setMustChangePassword(true)
+      else if (err instanceof BookingError && (err.code === 'VERSION_CONFLICT' || err.code === 'INVALID_STATE')) {
+        setReloadKey((k) => k + 1)
+      }
+      throw err
+    }
+
+    // Each mutation reloads the data set.
     const mutate = async <T,>(request: () => Promise<T>) => {
       let result: T
       try {
         result = await request()
       } catch (err) {
-        if (isUnauthenticated(err)) endSession()
-        else if (needsPasswordChange(err)) setMustChangePassword(true)
-        else if (err instanceof BookingError && (err.code === 'VERSION_CONFLICT' || err.code === 'INVALID_STATE')) {
-          // Someone else changed the booking; show its current state.
-          setReloadKey((k) => k + 1)
-        }
+        handleError(err)
         throw err
       }
       // Wait for fresh data so dialogs close on the updated state. The change itself succeeded,
-      // so a failed refresh falls back to a background reload instead of reporting an error.
-      try {
-        setData(await dataSource.load(range))
-      } catch {
-        setReloadKey((k) => k + 1)
-      }
+      // so a failed refresh is reported by the load, not as an error of the change.
+      await reloadAndWait()
       return result
     }
 
@@ -230,15 +258,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
       room: (id) => data.rooms.find((r) => r.id === id),
       organization: (id) => data.organizations.find((o) => o.id === id),
       user: (id) => data.users.find((u) => u.id === id),
+      roomOf: (b) => roomInfo(data.rooms.find((r) => r.id === b.roomId), b),
 
+      listBookings,
       createBooking: (input: CreateBookingInput) => mutate(() => dataSource.createBooking(input)),
-      approveBooking: (id) => mutate(() => dataSource.approveBooking(booking(id))),
+      approveBooking: (id, comment) => mutate(() => dataSource.approveBooking(booking(id), comment)),
       rejectBooking: (id, reason) => mutate(() => dataSource.rejectBooking(booking(id), reason)),
-      cancelBooking: (id) => mutate(() => dataSource.cancelBooking(booking(id))),
+      cancelBooking: (id, reason) => mutate(() => dataSource.cancelBooking(booking(id), reason)),
+      // The caller passes the booking as it was when the user started editing, so its version
+      // detects changes made by others in the meantime instead of overwriting them.
+      updateBooking: (original, input) => mutate(() => dataSource.updateBooking(original, input)),
+
+      previewSeries,
+      createSeries: (input) => mutate(() => dataSource.series.create(input)),
+      listSeries,
+      updateSeries: (from, input, options) =>
+        options?.dryRun
+          ? dataSource.series.update(from, input, options).catch(handleError)
+          : mutate(() => dataSource.series.update(from, input, options)),
+      cancelSeries: (seriesId, { fromId, reason }) =>
+        mutate(() => dataSource.series.cancel(seriesId, { from: fromId ? booking(fromId) : undefined, reason })),
+      approveSeries: (seriesId, comment) => mutate(() => dataSource.series.approve(seriesId, comment)),
+      rejectSeries: (seriesId, reason) => mutate(() => dataSource.series.reject(seriesId, reason)),
+
+      acceptInvitation: dataSource.invitations
+        ? (id) => mutate(() => dataSource.invitations!.accept(id))
+        : undefined,
+      declineInvitation: dataSource.invitations
+        ? (id) => mutate(() => dataSource.invitations!.decline(id))
+        : undefined,
       markDecisionsSeen: () => mutate(() => dataSource.markDecisionsSeen()),
       resetDemoData: async () => {
         await dataSource.demo?.reset()
-        setData(await dataSource.load(range))
+        await reloadAndWait()
         setBookingDraft(null)
         setDetailsBookingId(null)
       },
@@ -267,7 +319,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       notify,
       dismissToast,
     }
-  }, [data, userId, range, loading, prefs, bookingDraft, detailsBookingId, toasts, notify, dismissToast, endSession, updatePrefs])
+  }, [data, userId, loading, prefs, bookingDraft, detailsBookingId, toasts, notify, dismissToast, endSession, updatePrefs, reloadAndWait])
 
   if (userId && mustChangePassword && dataSource.auth) {
     const { auth } = dataSource

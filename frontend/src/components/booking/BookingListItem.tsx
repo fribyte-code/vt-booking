@@ -1,4 +1,4 @@
-import { Building2, Clock } from 'lucide-react'
+import { Building2, Clock, Repeat } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useApp } from '../../hooks/useApp'
 import { formatTimeRange } from '../../lib/dates'
@@ -14,7 +14,7 @@ interface BookingListItemProps {
 
 export function BookingListItem({ booking, meta, actions, children }: BookingListItemProps) {
   const app = useApp()
-  const room = app.room(booking.roomId)
+  const room = app.roomOf(booking)
   const start = new Date(booking.start)
 
   return (
@@ -30,7 +30,7 @@ export function BookingListItem({ booking, meta, actions, children }: BookingLis
           </div>
         </div>
 
-        <div className="min-w-0 flex-1 border-l-[3px] pl-4" style={{ borderColor: room?.color }}>
+        <div className="min-w-0 flex-1 border-l-[3px] pl-4" style={{ borderColor: room.color }}>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <button
               type="button"
@@ -39,15 +39,20 @@ export function BookingListItem({ booking, meta, actions, children }: BookingLis
             >
               {booking.title}
             </button>
-            <StatusBadge status={booking.status} />
+            <StatusBadge booking={booking} />
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600 [&_svg]:size-3.5 [&_svg]:text-slate-400">
             <span className="flex items-center gap-1.5">
               <Clock /> {formatTimeRange(booking.start, booking.end)}
             </span>
             <span className="flex items-center gap-1.5">
-              <RoomDot color={room?.color ?? '#94a3b8'} className="size-2.5" /> {room?.name}
+              <RoomDot color={room.color} className="size-2.5" /> {room.name}
             </span>
+            {booking.seriesId && (
+              <span className="flex items-center gap-1.5">
+                <Repeat /> Gjentakende
+              </span>
+            )}
             <span className="flex items-center gap-1.5">
               <Building2 /> {app.organization(booking.organizationId)?.name}
             </span>

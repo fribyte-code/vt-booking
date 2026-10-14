@@ -83,7 +83,7 @@ class BootstrapAdminIntegrationTest extends IntegrationTest {
 
     @Test
     void enforcesThePasswordPolicy() {
-        for (String weak : new String[] {"kort", "syvtegn"}) {
+        for (String weak : new String[] {"kort", "syvtegn", "x".repeat(129)}) {
             assertThatThrownBy(() -> bootstrap.createFirstAdmin("vt-admin@example.test", "A", weak))
                     .isInstanceOf(BootstrapRefusedException.class);
         }

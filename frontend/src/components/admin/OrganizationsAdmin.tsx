@@ -8,6 +8,7 @@ import { Button } from '../ui/Button'
 import { Alert, Field, Input } from '../ui/fields'
 import { Modal } from '../ui/Modal'
 import { Chip } from './Chip'
+import { FutureBookingsDialog } from './FutureBookingsDialog'
 import { useAdminData } from './useAdminData'
 
 /** System administrators: create, rename, archive and restore organizations. */
@@ -19,6 +20,7 @@ export function OrganizationsAdmin() {
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<AdminOrganization | null>(null)
+  const [archiving, setArchiving] = useState<AdminOrganization | null>(null)
 
   if (error) return <Alert tone="error">{error}</Alert>
   if (!organizations) return <p className="text-sm text-slate-500">Laster organisasjoner …</p>
@@ -84,7 +86,7 @@ export function OrganizationsAdmin() {
               <Pencil className="size-4" />
             </Button>
             {o.status === 'ACTIVE' ? (
-              <Button size="sm" variant="danger" disabled={busy} onClick={() => run(() => adminApi.updateOrganization(o.id, { status: 'ARCHIVED' }))}>
+              <Button size="sm" variant="danger" disabled={busy} onClick={() => setArchiving(o)}>
                 <Archive className="size-4" /> Arkiver
               </Button>
             ) : (
@@ -96,8 +98,28 @@ export function OrganizationsAdmin() {
         ))}
         {organizations.length === 0 && <li className="px-4 py-6 text-center text-sm text-slate-500">Ingen organisasjoner ennå.</li>}
       </ul>
-      <p className="text-xs text-slate-500">Arkiverte organisasjoner kan ikke booke rom. Eksisterende bookinger og historikk beholdes.</p>
+      <p className="text-xs text-slate-500">Arkiverte organisasjoner kan ikke booke rom. Du velger selv om kommende bookinger kanselleres; historikken beholdes.</p>
 
+      {archiving && (
+        <FutureBookingsDialog
+          title={`Arkivere ${archiving.name}?`}
+          intro={
+            <>
+              {archiving.name} kan ikke booke rom etter arkivering, og organisasjonsadministratorene kan ikke endre medlemmer.
+              Invitasjoner som ikke er besvart, slettes.
+            </>
+          }
+          load={() => adminApi.futureBookings('organizations', archiving.id)}
+          onClose={() => setArchiving(null)}
+          onConfirm={async (cancelFutureBookings) => {
+            await adminApi.updateOrganization(archiving.id, { status: 'ARCHIVED', cancelFutureBookings })
+            setArchiving(null)
+            reload()
+            app.reload()
+            app.notify(`${archiving.name} er arkivert.`, 'info')
+          }}
+        />
+      )}
       {renaming && (
         <RenameDialog
           organization={renaming}

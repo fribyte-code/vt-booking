@@ -9,6 +9,7 @@ import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { Alert, Field, Input, Select } from '../ui/fields'
 import { Modal } from '../ui/Modal'
 import { Chip } from './Chip'
+import { FutureBookingsDialog } from './FutureBookingsDialog'
 import { TemporaryPasswordDialog } from './TemporaryPasswordDialog'
 import { useAdminData } from './useAdminData'
 
@@ -227,6 +228,8 @@ function EditUserDialog({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmDisable, setConfirmDisable] = useState(false)
+  const [removingOrgId, setRemovingOrgId] = useState<string | null>(null)
   const orgName = (orgId: string) => organizations.find((o) => o.id === orgId)?.name ?? 'Ukjent'
   const addable = organizations.filter((o) => o.status === 'ACTIVE' && !user.memberships.some((m) => m.organizationId === o.id))
 
@@ -244,17 +247,15 @@ function EditUserDialog({
     }
   }
 
+  const fields = () => ({
+    displayName: name,
+    email,
+    globalRole: systemAdmin ? ('SYSTEM_ADMIN' as const) : ('USER' as const),
+    status: active ? ('ACTIVE' as const) : ('DISABLED' as const),
+  })
+  // Deactivating: the administrator first sees the user's future bookings and decides about the approved ones.
   const save = () =>
-    run(
-      () =>
-        adminApi.updateUser(user.id, {
-          displayName: name,
-          email,
-          globalRole: systemAdmin ? 'SYSTEM_ADMIN' : 'USER',
-          status: active ? 'ACTIVE' : 'DISABLED',
-        }),
-      onClose,
-    )
+    user.status === 'ACTIVE' && !active ? setConfirmDisable(true) : run(() => adminApi.updateUser(user.id, fields()), onClose)
 
   return (
     <Modal
@@ -320,7 +321,7 @@ function EditUserDialog({
                   variant="danger"
                   disabled={busy}
                   aria-label={`Fjern fra ${orgName(m.organizationId)}`}
-                  onClick={() => run(() => adminApi.removeMembership(user.id, m.organizationId))}
+                  onClick={() => setRemovingOrgId(m.organizationId)}
                 >
                   <Trash2 className="size-4" />
                 </Button>
@@ -350,6 +351,37 @@ function EditUserDialog({
         {error && <Alert tone="error">{error}</Alert>}
       </div>
 
+      {confirmDisable && (
+        <FutureBookingsDialog
+          title={`Deaktivere ${user.displayName}?`}
+          intro={`${user.displayName} kan ikke logge inn etter deaktivering, og blir logget ut overalt.`}
+          load={() => adminApi.futureBookings('users', user.id)}
+          choiceApplies={(b) => b.status === 'APPROVED'}
+          alwaysCancelledNote="Ventende søknader trekkes alltid tilbake når en bruker deaktiveres. Valget gjelder bare godkjente bookinger."
+          onClose={() => setConfirmDisable(false)}
+          onConfirm={async (cancelFutureBookings) => {
+            await adminApi.updateUser(user.id, { ...fields(), cancelFutureBookings })
+            setConfirmDisable(false)
+            onChanged()
+            onClose()
+          }}
+        />
+      )}
+      {removingOrgId && (
+        <ConfirmDialog
+          title="Fjerne fra organisasjonen?"
+          confirmLabel="Fjern"
+          destructive
+          onClose={() => setRemovingOrgId(null)}
+          onConfirm={async () => {
+            await run(() => adminApi.removeMembership(user.id, removingOrgId))
+            setRemovingOrgId(null)
+          }}
+        >
+          {user.displayName} mister tilgangen til å booke for {orgName(removingOrgId)}. Ventende søknader hen har sendt for{' '}
+          {orgName(removingOrgId)}, trekkes tilbake. Godkjente bookinger beholdes.
+        </ConfirmDialog>
+      )}
       {confirmReset && (
         <ConfirmDialog
           title="Tilbakestille passord?"

@@ -110,16 +110,23 @@ To get back to the initial state, use **"Tilbakestill demodata"** at the bottom 
 3. Apply for Storsalen. The request shows up striped with a dashed border.
 4. Switch to Silje and approve the request under **Administrasjon**.
 5. Switch back to Kari. The booking is confirmed under **Mine bookinger**, and the bell shows a notification.
+6. Drag one of Kari's bookings to another time in the week view, or open it and choose **Endre**.
+7. Create a booking with **Gjenta: Ukentlig**. The form lists the dates and marks taken ones, which you can skip. Open one of the occurrences to see the series, and cancel "this and all following".
 
 ## Features
 
 - Day, week and month views (FullCalendar) with Norwegian formatting. Week view is the default, and phones open in day view.
 - Per-room colors, room filters, and a toggle for pending requests.
 - Click or drag in the calendar to create a booking. Click a booking to see its details.
-- The booking form gives live feedback on permissions, availability and time validation.
-- Admin page with pending requests, a history of processed requests, and read-only overviews of permissions and users.
-- **Mine bookinger** has upcoming, pending, rejected and past bookings, plus cancellation.
-- Notification bell for decisions on your own requests.
+- The booking form gives live feedback on permissions, availability and time validation. It loads the chosen room's bookings for the chosen day, so dates outside the calendar's range are checked too.
+- **Editing.** "Endre" in the booking details (and in Mine bookinger) opens the booking form prefilled; the organization is fixed. The form warns when a new room or time turns an approved booking into a new request that loses its slot until approved. Bookings in archived rooms can only get a new title or description.
+- **Drag and drop.** Bookings you may edit can be dragged and resized in the calendar. A move that changes the status, or moves one occurrence of a series, is confirmed first; a refused move snaps back with a toast.
+- **Weekly series.** "Gjenta" (weekly, or every 2nd/3rd/4th week, up to and including a date) previews the dates with taken ones marked, and can skip them. Details show "Del av en gjentakende serie" with the dates. Editing an occurrence offers "Bare denne" or "Denne og alle følgende"; the latter is first run as a dry run that lists what changes and which dates are taken. Cancelling offers this one, this and following, or the whole series. Administrators approve or reject a whole series, and the admin queue groups a series' open requests into one expandable item.
+- Admin page with pending requests and a history of processed requests. In API mode also users, organizations, rooms and access. Closing or archiving a room, archiving an organization and deactivating a user first lists the affected future bookings and asks whether to cancel or keep them.
+- **Mine bookinger** has upcoming, pending, rejected and past bookings, with editing and cancellation.
+- Notification bell for decisions on your own requests and for cancellations by others. In API mode it also shows invitations to organizations, which are shown as a banner too and can be accepted or declined.
+- **Members** (API mode, organization admins): adding an existing account sends an invitation that the person must accept; a new email creates an account with a temporary password. Pending invitations can be withdrawn.
+- Bookings in archived rooms keep their room name and are shown in a neutral grey.
 
 ## Architecture
 
@@ -135,19 +142,21 @@ src/
 │   ├── bookingService.ts   Demo: async "API" on top of localStorage
 │   ├── apiDataSource.ts    API: maps Spring Boot responses onto the shared types
 │   ├── apiClient.ts        API: fetch, CSRF token, Problem Details → BookingError
-│   └── bookingRules.ts     Pure rules: permissions, overlap, validation
+│   ├── adminApi.ts         API: user, organization, room, member and invitation management
+│   └── bookingRules.ts     Pure rules: permissions, overlap, validation, edits, series dates
 ├── context/            AppProvider: session, data, UI state, toasts
-├── hooks/              useApp, useApprove
+├── hooks/              useApp, useSeriesPreview
 ├── components/
-│   ├── calendar/       FullCalendar wrapper
-│   ├── booking/        Booking dialog, details, list item, badges
+│   ├── calendar/       FullCalendar wrapper, move confirmation
+│   ├── booking/        Booking dialog (create, edit, series), details, cancel and decision dialogs, list item, badges
+│   ├── admin/          Management tabs (API mode), future-bookings confirmation
 │   ├── layout/         Top bar, sidebar, user switcher (demo), account menu (API), notifications
 │   └── ui/             Button, Modal, form fields, Tabs, Popover, Toaster
 └── pages/              CalendarPage, MyBookingsPage, AdminPage, LoginPage (API)
 ```
 
-- **One interface, two implementations.** Components use `useApp()`, and `AppProvider` calls the `DataSource`. Demo-only features (`demo.switchUser`, `demo.reset`) and API-only ones (`auth.login`, `auth.logout`) are optional parts of the interface.
-- **The backend decides.** In API mode, identity comes from the session, and every permission and booking rule is enforced by Spring Boot. The booking form still calls `evaluateBooking` for live feedback, but the server's answer (a Problem Details `code` and Norwegian `detail`) is what the user sees.
+- **One interface, two implementations.** Components use `useApp()`, and `AppProvider` calls the `DataSource`. Editing and series (`updateBooking`, `series.*`) exist in both. Demo-only features (`demo.switchUser`, `demo.reset`) and API-only ones (`auth.*`, `invitations.*`) are optional parts of the interface. Management (deactivation, members, org invitations) calls `adminApi.ts` directly and is only rendered in API mode.
+- **The backend decides.** In API mode, identity comes from the session, and every permission and booking rule is enforced by Spring Boot. The booking form still calls `evaluateBooking` / `evaluateEdit` for live feedback, but the server's answer (a Problem Details `code` and Norwegian `detail`) is what the user sees.
 - **Loading.** API mode loads the calendar's visible range (at most 62 days), the user's own bookings, and for administrators the request queue and user list. The data is reloaded when the calendar moves outside the loaded range and after every change. A spinner next to the calendar title shows a reload in progress.
 - **Errors.** A 401 sends the user back to the login page. A `VERSION_CONFLICT` or `INVALID_STATE` reloads the data, because someone else changed the booking. Network failures and server errors are shown as toasts, or as a retry screen before the first load.
 - **CSRF.** The API client reads the `XSRF-TOKEN` cookie and sends it as `X-XSRF-TOKEN` on every POST. It fetches `/api/auth/csrf` when the cookie is missing, for example after login, and retries once if the token is refused.
@@ -159,7 +168,10 @@ src/
 - A request is also refused at creation time if the room is already confirmed for that slot, since there's no point applying for an occupied room.
 - Bookings can't be made in the past, and requests whose start time has passed can't be approved.
 - Rejecting a request requires a reason, which the requester sees. This matches the API.
-- Users can cancel their own future bookings and requests, and administrators can cancel any of them. Bookings that have already started can't be cancelled.
+- The requester (while still a member), the organization's admins and system administrators can edit and cancel future bookings and requests (`canChangeBooking`). Bookings that have already started can't be changed.
+- A new room or time follows the room permission: DIRECT is confirmed at once, REQUEST becomes a new request, except that a system administrator moving an approved booking keeps it approved. A new title or description keeps the status.
+- Series occurrences are ordinary bookings with a shared `seriesId`. They keep their local wall-clock time across daylight saving changes. A series has 2–52 occurrences, the last within 180 days.
+- Dragging in the calendar moves only that occurrence of a series. To move several, use "Endre" → "Denne og alle følgende".
 - The administrator isn't a member of any organization, so they can't make bookings. They approve, reject and cancel.
 - A booking can't cross midnight. An end time of 00:00 means the end of the selected day.
 - Permissions are stored on the room (`room.permissions[orgId]`) for simplicity. In the database, this becomes the `room_access` table.
@@ -172,7 +184,8 @@ src/
 - In demo mode, data lives only in this browser's localStorage. It isn't shared between users or devices, and two open tabs don't synchronize.
 - The API has no notifications yet. In API mode, "Merk alle som lest" is remembered per browser in localStorage.
 - In API mode, the booking form's live conflict hint and the admin page's conflict warnings only know about the loaded bookings. The server always checks again.
-- The cancel button follows the demo rule (own bookings, or administrator). The API also lets organization admins cancel their organization's bookings, but the UI doesn't offer it yet.
-- Rooms, organizations and permissions can't be edited in the UI.
-- No email notifications, recurring bookings, ICS export or Google Calendar import.
+- The demo has no organization admins, invitations or management pages; it shows a read-only overview instead.
+- In API mode, the series list in the booking details comes from the server, but only occurrences in the loaded data can be opened from it.
+- Deactivation and invitation flows exist only in API mode.
+- No email notifications, ICS export or Google Calendar import.
 - The bundle is large (~180 kB gzip), mostly because of FullCalendar. That's fine for a prototype, and code splitting can be added later.

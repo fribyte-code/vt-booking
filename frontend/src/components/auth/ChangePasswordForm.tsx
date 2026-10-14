@@ -3,8 +3,9 @@ import { errorMessage } from '../../lib/errors'
 import { Button } from '../ui/Button'
 import { Alert, Field, Input } from '../ui/fields'
 
-/** Minimum length, matching the server's password policy. */
+/** Length limits in characters (code points), matching the server's password policy. No blocklist. */
 export const MIN_PASSWORD_LENGTH = 8
+export const MAX_PASSWORD_LENGTH = 128
 
 /** Current password, new password twice. The server enforces the real rules; this only catches typos early. */
 export function ChangePasswordForm({
@@ -25,7 +26,9 @@ export function ChangePasswordForm({
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if ([...next].length < MIN_PASSWORD_LENGTH) return setError(`Det nye passordet må ha minst ${MIN_PASSWORD_LENGTH} tegn.`)
+    const length = [...next].length
+    if (length < MIN_PASSWORD_LENGTH) return setError(`Det nye passordet må ha minst ${MIN_PASSWORD_LENGTH} tegn.`)
+    if (length > MAX_PASSWORD_LENGTH) return setError(`Det nye passordet kan ha maks ${MAX_PASSWORD_LENGTH} tegn.`)
     if (next !== repeat) return setError('De nye passordene er ikke like.')
     setBusy(true)
     setError(null)
@@ -42,7 +45,7 @@ export function ChangePasswordForm({
       <Field label="Nåværende passord" htmlFor={`${id}-current`}>
         <Input id={`${id}-current`} type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
       </Field>
-      <Field label="Nytt passord" htmlFor={`${id}-new`} hint={`Minst ${MIN_PASSWORD_LENGTH} tegn.`}>
+      <Field label="Nytt passord" htmlFor={`${id}-new`} hint={`${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} tegn.`}>
         <Input id={`${id}-new`} type="password" autoComplete="new-password" required value={next} onChange={(e) => setNext(e.target.value)} />
       </Field>
       <Field label="Gjenta nytt passord" htmlFor={`${id}-repeat`}>

@@ -8,6 +8,7 @@ import { BookingDialog } from '../booking/BookingDialog'
 import { IconButton } from '../ui/Button'
 import { Toaster } from '../ui/Toaster'
 import { AccountMenu } from './AccountMenu'
+import { InvitationBanner } from './InvitationBanner'
 import { NotificationsMenu } from './NotificationsMenu'
 import { Sidebar } from './Sidebar'
 import { UserSwitcher } from './UserSwitcher'
@@ -55,8 +56,11 @@ export function AppLayout() {
           </div>
         )}
 
-        <main className="min-w-0 flex-1 overflow-hidden">
-          <Outlet />
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <InvitationBanner />
+          <div className="min-h-0 flex-1">
+            <Outlet />
+          </div>
         </main>
       </div>
 

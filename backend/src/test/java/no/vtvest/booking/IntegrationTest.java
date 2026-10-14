@@ -4,15 +4,22 @@ import jakarta.servlet.http.Cookie;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import no.vtvest.booking.security.LoginThrottle;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.jdbc.Sql;
+import com.jayway.jsonpath.JsonPath;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 /**
@@ -93,5 +100,38 @@ abstract class IntegrationTest {
         return """
                 {"roomId":"%s","organizationId":"%s","title":"%s","start":"%s","end":"%s"}
                 """.formatted(roomId, orgId, title, start, end);
+    }
+
+    /** Sends a request as {@code actor} (a user ID), with CSRF and an optional JSON body. */
+    ResultActions call(MockHttpServletRequestBuilder request, String actor, String json) throws Exception {
+        request.with(withCsrf()).with(user(actor));
+        if (json != null) request.contentType(MediaType.APPLICATION_JSON).content(json);
+        return mvc.perform(request);
+    }
+
+    /** Books through the API and returns the new booking's id. */
+    UUID createBooking(String actor, UUID roomId, UUID orgId, Instant start, Instant end) throws Exception {
+        String body = call(post("/api/bookings"), actor, bookingJson(roomId, orgId, "Test", start, end))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return UUID.fromString(JsonPath.read(body, "$.id"));
+    }
+
+    int bookingVersion(UUID id) {
+        return jdbc.queryForObject("SELECT version FROM bookings WHERE id = ?", Integer.class, id);
+    }
+
+    String bookingStatus(UUID id) {
+        return jdbc.queryForObject("SELECT status FROM bookings WHERE id = ?", String.class, id);
+    }
+
+    /** Inserts a one-hour booking directly, bypassing the rules (e.g. one that has already started). */
+    UUID insertBooking(UUID roomId, UUID orgId, UUID requesterId, Instant start, String status) {
+        return jdbc.queryForObject("""
+                INSERT INTO bookings (room_id, organization_id, requested_by_id, title, start_at, end_at, status, requires_approval)
+                VALUES (?, ?, ?, 'Direkte', ?::timestamptz, ?::timestamptz, ?, ?)
+                RETURNING id
+                """, UUID.class, roomId, orgId, requesterId, start.toString(),
+                start.plus(1, ChronoUnit.HOURS).toString(), status, status.equals("PENDING"));
     }
 }

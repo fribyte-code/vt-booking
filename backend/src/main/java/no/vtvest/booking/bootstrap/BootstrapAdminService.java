@@ -48,7 +48,7 @@ public class BootstrapAdminService {
         if (emailInUse(email)) {
             throw new BootstrapRefusedException("Det finnes allerede en bruker med denne e-postadressen.");
         }
-        PasswordPolicy.problem(password, email).ifPresent(problem -> {
+        PasswordPolicy.problem(password).ifPresent(problem -> {
             throw new BootstrapRefusedException(problem);
         });
         return jdbc.queryForObject("""

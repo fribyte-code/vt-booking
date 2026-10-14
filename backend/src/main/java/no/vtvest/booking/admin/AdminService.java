@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import no.vtvest.booking.booking.BookingResponse;
+import no.vtvest.booking.booking.BookingService;
 import no.vtvest.booking.common.ApiException;
 import no.vtvest.booking.common.ErrorCode;
 import no.vtvest.booking.organization.MembershipRole;
@@ -30,10 +32,12 @@ class AdminService {
 
     private final JdbcTemplate jdbc;
     private final AccountService accounts;
+    private final BookingService bookingService;
 
-    AdminService(JdbcTemplate jdbc, AccountService accounts) {
+    AdminService(JdbcTemplate jdbc, AccountService accounts, BookingService bookingService) {
         this.jdbc = jdbc;
         this.accounts = accounts;
+        this.bookingService = bookingService;
     }
 
     static void requireSystemAdmin(User actor) {
@@ -113,6 +117,11 @@ class AdminService {
         if (body.status() != null) {
             jdbc.update("UPDATE users SET status = ? WHERE id = ?", body.status().name(), id);
         }
+        if (body.status() == UserStatus.DISABLED) {
+            // Approved bookings belong to the organization, so they are only cancelled on request.
+            bookingService.cancelFuture(actor, BookingService.Scope.REQUESTER, id,
+                    Boolean.TRUE.equals(body.cancelFutureBookings()), "Brukeren er deaktivert.");
+        }
         return user(id);
     }
 
@@ -133,14 +142,30 @@ class AdminService {
                 INSERT INTO memberships (user_id, organization_id, role) VALUES (?, ?, ?)
                 ON CONFLICT (user_id, organization_id) DO UPDATE SET role = EXCLUDED.role
                 """, userId, organizationId, role.name());
+        // A pending invitation to the same organization is settled by this.
+        jdbc.update("DELETE FROM membership_invitations WHERE user_id = ? AND organization_id = ?", userId, organizationId);
         return user(userId);
     }
 
     @Transactional
-    AdminUser removeMembership(UUID userId, UUID organizationId) {
+    AdminUser removeMembership(User actor, UUID userId, UUID organizationId) {
         user(userId);
-        jdbc.update("DELETE FROM memberships WHERE user_id = ? AND organization_id = ?", userId, organizationId);
+        int removed = jdbc.update("DELETE FROM memberships WHERE user_id = ? AND organization_id = ?", userId, organizationId);
+        if (removed > 0) {
+            bookingService.cancelFutureRequestsOfFormerMember(actor, userId, organizationId);
+        }
         return user(userId);
+    }
+
+    /** Future approved and pending bookings of a room, organization or requester, for the impact preview. */
+    @Transactional(readOnly = true)
+    List<BookingResponse> futureBookings(User actor, BookingService.Scope scope, UUID id) {
+        switch (scope) {
+            case ROOM -> room(id);
+            case ORGANIZATION -> organization(id);
+            case REQUESTER -> user(id);
+        }
+        return bookingService.futureBookings(actor, scope, id);
     }
 
     private static AdminUser toUser(ResultSet rs, List<UserMembership> memberships) throws SQLException {
@@ -187,8 +212,12 @@ class AdminService {
         return organization(id);
     }
 
+    /**
+     * Archiving deletes the organization's pending invitations. Its future bookings are cancelled
+     * only when asked; otherwise they stay. Restoring the organization does not bring back either.
+     */
     @Transactional
-    AdminOrganization updateOrganization(UUID id, UpdateOrganization body) {
+    AdminOrganization updateOrganization(User actor, UUID id, UpdateOrganization body) {
         organization(id);
         if (body.name() != null) {
             String name = body.name().trim();
@@ -197,6 +226,12 @@ class AdminService {
         }
         if (body.status() != null) {
             jdbc.update("UPDATE organizations SET status = ? WHERE id = ?", body.status().name(), id);
+        }
+        if (body.status() == OrganizationStatus.ARCHIVED) {
+            jdbc.update("DELETE FROM membership_invitations WHERE organization_id = ?", id);
+            if (Boolean.TRUE.equals(body.cancelFutureBookings())) {
+                bookingService.cancelFuture(actor, BookingService.Scope.ORGANIZATION, id, true, "Organisasjonen er arkivert.");
+            }
         }
         return organization(id);
     }
@@ -252,8 +287,12 @@ class AdminService {
         return room(id);
     }
 
+    /**
+     * Disabling or archiving a room cancels its future bookings only with
+     * {@code cancelFutureBookings: true}. Otherwise they stay, and the room just can't be booked.
+     */
     @Transactional
-    AdminRoom updateRoom(UUID id, RoomFields body) {
+    AdminRoom updateRoom(User actor, UUID id, RoomFields body) {
         room(id);
         String name = body.name().trim();
         requireUniqueRoomName(name, id);
@@ -263,6 +302,10 @@ class AdminService {
                 WHERE id = ?
                 """, name, blankToNull(body.description()), blankToNull(body.location()), body.capacity(), body.color(),
                 body.defaultPermission().name(), body.status() == null ? null : body.status().name(), id);
+        if (Boolean.TRUE.equals(body.cancelFutureBookings()) && body.status() != null && body.status() != RoomStatus.ACTIVE) {
+            String reason = body.status() == RoomStatus.ARCHIVED ? "Rommet er arkivert." : "Rommet er stengt.";
+            bookingService.cancelFuture(actor, BookingService.Scope.ROOM, id, true, reason);
+        }
         return room(id);
     }
 

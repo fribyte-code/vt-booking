@@ -70,7 +70,7 @@ public class AccountService {
         if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
             throw new ApiException(ErrorCode.VALIDATION, "Nåværende passord er feil.");
         }
-        PasswordPolicy.problem(newPassword, user.getEmail()).ifPresent(problem -> {
+        PasswordPolicy.problem(newPassword).ifPresent(problem -> {
             throw new ApiException(ErrorCode.VALIDATION, problem);
         });
         Instant changedAt = now();

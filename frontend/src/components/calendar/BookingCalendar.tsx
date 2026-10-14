@@ -4,26 +4,37 @@ import type {
   DayHeaderContentArg,
   EventClickArg,
   EventContentArg,
+  EventDropArg,
   EventInput,
   EventMountArg,
 } from '@fullcalendar/core'
 import nbLocale from '@fullcalendar/core/locales/nb'
 import dayGridPlugin from '@fullcalendar/daygrid'
-import interactionPlugin from '@fullcalendar/interaction'
+import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction'
 import FullCalendar from '@fullcalendar/react'
 import timeGridPlugin from '@fullcalendar/timegrid'
-import { Hourglass } from 'lucide-react'
-import type { Ref } from 'react'
+import { Hourglass, Repeat } from 'lucide-react'
+import { type Ref, useMemo } from 'react'
 import { cn } from '../../lib/cn'
 import { tint } from '../../lib/color'
+import { roomInfo } from '../../lib/rooms'
 import type { Booking, Organization, Room } from '../../types'
 
 export type CalendarViewType = 'timeGridDay' | 'timeGridWeek' | 'dayGridMonth'
 
 interface EventProps {
   booking: Booking
-  room: Room
+  roomName: string
+  color: string
   organization?: Organization
+}
+
+/** A booking dragged or resized to a new time. Call `revert` to put it back if the move is not saved. */
+export interface BookingMove {
+  booking: Booking
+  start: Date
+  end: Date
+  revert: () => void
 }
 
 interface BookingCalendarProps {
@@ -36,6 +47,9 @@ interface BookingCalendarProps {
   onBookingClick: (id: string) => void
   onDatesSet: (arg: DatesSetArg) => void
   onDayClick: (date: Date) => void
+  /** Whether the user may drag and resize this booking. */
+  canMove: (booking: Booking) => boolean
+  onMove: (move: BookingMove) => void
 }
 
 const plugins = [timeGridPlugin, dayGridPlugin, interactionPlugin]
@@ -52,14 +66,19 @@ export function BookingCalendar({
   onBookingClick,
   onDatesSet,
   onDayClick,
+  canMove,
+  onMove,
 }: BookingCalendarProps) {
-  const events: EventInput[] = bookings.flatMap((booking) => {
-    const room = rooms.find((r) => r.id === booking.roomId)
-    if (!room) return []
+  // Memoized: FullCalendar compares the events option by identity, and a new array on every
+  // render would reset an event that is being dragged while the move is confirmed.
+  const events: EventInput[] = useMemo(() => bookings.map((booking) => {
+    // Bookings in archived rooms are kept, with the room name from the booking and a neutral color.
+    const { name, color, room } = roomInfo(rooms.find((r) => r.id === booking.roomId), booking)
     const pending = booking.status === 'PENDING'
     const props: EventProps = {
       booking,
-      room,
+      roomName: name,
+      color,
       organization: organizations.find((o) => o.id === booking.organizationId),
     }
     return {
@@ -67,13 +86,24 @@ export function BookingCalendar({
       title: booking.title,
       start: booking.start,
       end: booking.end,
-      backgroundColor: pending ? tint(room.color, 0.1) : room.color,
-      borderColor: room.color,
-      textColor: pending ? room.color : '#fff',
+      // Bookings in archived rooms can't be moved, only renamed or cancelled.
+      editable: !!room && canMove(booking),
+      backgroundColor: pending ? tint(color, 0.1) : color,
+      borderColor: color,
+      textColor: pending ? color : '#fff',
       classNames: pending ? ['ev-pending'] : [],
       extendedProps: props,
     }
-  })
+  }), [bookings, rooms, organizations, canMove])
+
+  const handleMove = (info: EventDropArg | EventResizeDoneArg) => {
+    const { booking } = info.event.extendedProps as EventProps
+    if (!info.event.start || !info.event.end) {
+      info.revert()
+      return
+    }
+    onMove({ booking, start: info.event.start, end: info.event.end, revert: info.revert })
+  }
 
   const handleSelect = (info: DateSelectArg) => {
     let start = info.start
@@ -123,8 +153,10 @@ export function BookingCalendar({
         arg.jsEvent.preventDefault()
         onBookingClick(arg.event.id)
       }}
+      eventDrop={handleMove}
+      eventResize={handleMove}
       eventDidMount={(arg: EventMountArg) => {
-        arg.el.style.setProperty('--room-color', (arg.event.extendedProps as EventProps).room.color)
+        arg.el.style.setProperty('--room-color', (arg.event.extendedProps as EventProps).color)
       }}
       datesSet={onDatesSet}
       dayHeaderContent={renderDayHeader}
@@ -162,14 +194,15 @@ function renderDayHeader(arg: DayHeaderContentArg) {
 }
 
 function renderEvent(arg: EventContentArg) {
-  const { booking, room, organization } = arg.event.extendedProps as EventProps
+  const { booking, roomName, organization } = arg.event.extendedProps as EventProps
   const pending = booking.status === 'PENDING'
-  const label = `${booking.title}, ${arg.timeText}, ${room.name}${pending ? ', venter på godkjenning' : ''}`
+  const label = `${booking.title}, ${arg.timeText}, ${roomName}${pending ? ', venter på godkjenning' : ''}${booking.seriesId ? ', gjentakende' : ''}`
 
   if (arg.view.type === 'dayGridMonth') {
     return (
       <span className="flex min-w-0 items-center gap-1 text-xs" aria-label={label}>
         {pending && <Hourglass className="size-3 shrink-0" />}
+        {booking.seriesId && <Repeat className="size-3 shrink-0" />}
         <span className="shrink-0 opacity-90">{arg.timeText}</span>
         <span className="truncate font-medium">{booking.title}</span>
       </span>
@@ -181,10 +214,11 @@ function renderEvent(arg: EventContentArg) {
       <span className="flex items-center gap-1 font-semibold">
         {pending && <Hourglass className="size-3 shrink-0" />}
         <span className="truncate">{booking.title}</span>
+        {booking.seriesId && <Repeat className="size-3 shrink-0 opacity-80" />}
       </span>
       <span className="truncate opacity-90">{arg.timeText}</span>
       <span className="truncate opacity-85">
-        {room.name}
+        {roomName}
         {organization && ` · ${organization.name}`}
       </span>
     </span>

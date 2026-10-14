@@ -1,4 +1,4 @@
-import { BookingError } from './bookingError'
+import { BookingError, type ConflictSlot } from './bookingError'
 import type { ErrorCode } from './bookingRules'
 
 /**
@@ -66,15 +66,17 @@ export function createApiClient(
 
     let code: string | undefined
     let detail: string | undefined
+    let conflicts: ConflictSlot[] | undefined
     try {
-      const body = (await res.json()) as { code?: string; detail?: string }
+      const body = (await res.json()) as { code?: string; detail?: string; conflicts?: unknown }
       code = body.code
       detail = body.detail
+      if (Array.isArray(body.conflicts)) conflicts = body.conflicts as ConflictSlot[]
     } catch {
       // Not Problem Details (e.g. a proxy error page).
     }
     if (code && KNOWN_CODES.has(code as ErrorCode) && detail) {
-      return new BookingError(code as ErrorCode, detail)
+      return new BookingError(code as ErrorCode, detail, conflicts)
     }
     if (res.status === 403) return new BookingError('FORBIDDEN', 'Du har ikke tilgang til dette.')
     if (res.status === 404) return new BookingError('NOT_FOUND', 'Fant ikke det du lette etter.')

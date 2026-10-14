@@ -68,6 +68,15 @@ public class Booking {
     @Column(name = "cancellation_reason")
     private String cancellationReason;
 
+    @Column(name = "updated_at")
+    private Instant updatedAt;
+
+    @Column(name = "updated_by_id")
+    private UUID updatedById;
+
+    @Column(name = "series_id")
+    private UUID seriesId;
+
     @Version
     private int version;
 
@@ -82,7 +91,8 @@ public class Booking {
             Instant startAt,
             Instant endAt,
             boolean requiresApproval,
-            Instant createdAt) {
+            Instant createdAt,
+            UUID seriesId) {
         this.roomId = roomId;
         this.organizationId = organizationId;
         this.requestedById = requestedById;
@@ -93,6 +103,7 @@ public class Booking {
         this.requiresApproval = requiresApproval;
         this.status = requiresApproval ? BookingStatus.PENDING : BookingStatus.APPROVED;
         this.createdAt = createdAt;
+        this.seriesId = seriesId;
     }
 
     void approve(UUID adminId, Instant now, String comment) {
@@ -110,6 +121,42 @@ public class Booking {
         this.cancelledById = userId;
         this.cancelledAt = now;
         this.cancellationReason = reason;
+    }
+
+    /** New title and description; the status is unchanged. */
+    void editText(String title, String description, UUID userId, Instant now) {
+        this.title = title;
+        this.description = description;
+        recordUpdate(userId, now);
+    }
+
+    /**
+     * Moves the booking to another room or time. {@code status} is APPROVED or PENDING, decided by
+     * the caller from the room permission. A booking that becomes a direct booking or a new request
+     * loses the previous decision ({@code keepDecision} false), since it no longer applies to this
+     * room and time.
+     */
+    void move(UUID roomId, Instant startAt, Instant endAt, BookingStatus status, boolean requiresApproval,
+            boolean keepDecision, UUID userId, Instant now) {
+        this.roomId = roomId;
+        this.startAt = startAt;
+        this.endAt = endAt;
+        this.status = status;
+        this.requiresApproval = requiresApproval;
+        if (!keepDecision) {
+            this.decidedById = null;
+            this.decidedAt = null;
+            this.decisionComment = null;
+        }
+        // With keepDecision, an earlier decision (if any) stays as it was. A system admin moving a
+        // direct booking into a room that needs approval is not recorded as a decision: nobody
+        // approved a request, and it must not show up as one in the admin's decision history.
+        recordUpdate(userId, now);
+    }
+
+    private void recordUpdate(UUID userId, Instant now) {
+        this.updatedById = userId;
+        this.updatedAt = now;
     }
 
     private void recordDecision(UUID adminId, Instant now, String comment) {
@@ -184,6 +231,18 @@ public class Booking {
 
     public String getCancellationReason() {
         return cancellationReason;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public UUID getUpdatedById() {
+        return updatedById;
+    }
+
+    public UUID getSeriesId() {
+        return seriesId;
     }
 
     public int getVersion() {

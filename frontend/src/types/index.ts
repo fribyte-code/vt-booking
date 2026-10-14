@@ -33,7 +33,10 @@ export interface Room {
   name: string
   description: string
   location: string
-  capacity: number
+  /** Number of seats, when the administrator has set it. */
+  capacity?: number
+  /** API mode: a disabled room is shown but can't be booked. The demo has active rooms only. */
+  status?: 'ACTIVE' | 'DISABLED'
   /** Hex color used in the calendar. */
   color: string
   /** Booking permission per organization id (the `room_access` table). Missing entries mean NONE. */
@@ -59,11 +62,28 @@ export interface Booking {
   decidedById?: string
   decidedByName?: string
   decisionComment?: string
-  /** Whether the requester has seen the admin's decision (drives notifications). */
+  /**
+   * Whether the requester has seen what happened to the booking: the admin's decision, or a
+   * cancellation by someone else (drives notifications).
+   */
   decisionSeen?: boolean
   cancelledAt?: string
   cancelledById?: string
-  /** Optimistic-locking version from the API, sent back with approve, reject and cancel. */
+  cancelledByName?: string
+  cancellationReason?: string
+  /** When the booking was last edited (title, description, room or time). */
+  updatedAt?: string
+  updatedById?: string
+  /** API mode: who edited it, for the own organization and administrators. */
+  updatedByName?: string
+  /** Shared by the occurrences of a weekly series. */
+  seriesId?: string
+  /**
+   * API mode: the room's name, also for archived rooms, which are not in `AppData.rooms`.
+   * Use it when the room can't be looked up.
+   */
+  roomName?: string
+  /** Optimistic-locking version from the API, sent back with edit, approve, reject and cancel. */
   version?: number
 }
 
@@ -76,9 +96,81 @@ export interface CreateBookingInput {
   end: string
 }
 
+/** A new room, time, title or description for an existing booking. The organization can't change. */
+export interface UpdateBookingInput {
+  roomId: string
+  title: string
+  description?: string
+  start: string
+  end: string
+}
+
+export interface TimeSlot {
+  start: string
+  end: string
+}
+
+/** A series occurrence that was or would be skipped, with the new time it would have got. */
+export interface OccurrenceSlot extends TimeSlot {
+  id: string
+}
+
+/** Every `intervalWeeks` weeks (1–4), up to and including the local date `until` (`YYYY-MM-DD`). */
+export interface Recurrence {
+  intervalWeeks: number
+  until: string
+}
+
+/** A weekly series. `start` and `end` are the first occurrence. */
+export interface CreateSeriesInput extends CreateBookingInput {
+  recurrence: Recurrence
+  /** Create only the free occurrences instead of failing when some are taken. */
+  skipConflicts?: boolean
+}
+
+export interface SeriesPreviewOccurrence extends TimeSlot {
+  /** The time overlaps an approved booking. */
+  conflict: boolean
+}
+
+export interface SeriesCreated {
+  seriesId: string
+  created: Booking[]
+  skipped: TimeSlot[]
+}
+
+export interface SeriesUpdateOptions {
+  /** Leave occurrences whose new time is taken unchanged instead of failing. */
+  skipConflicts?: boolean
+  /** Only report what would change. */
+  dryRun?: boolean
+}
+
+export interface SeriesUpdated {
+  updated: Booking[]
+  skipped: OccurrenceSlot[]
+}
+
+export interface SeriesApproved {
+  approved: Booking[]
+  notApproved: (OccurrenceSlot & { code: string; reason: string })[]
+}
+
+/** API mode: an invitation to join an organization, waiting for the signed-in user's answer. */
+export interface Invitation {
+  id: string
+  organizationId: string
+  organizationName: string
+  role: 'MEMBER' | 'ORG_ADMIN'
+  invitedByName: string | null
+  createdAt: string
+}
+
 export interface AppData {
   users: User[]
   organizations: Organization[]
   rooms: Room[]
   bookings: Booking[]
+  /** API mode: the signed-in user's pending invitations. */
+  invitations?: Invitation[]
 }

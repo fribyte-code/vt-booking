@@ -1,16 +1,16 @@
-import { Check, Inbox, ShieldAlert, User, X } from 'lucide-react'
+import { Check, ChevronDown, Inbox, Repeat, ShieldAlert, User, X } from 'lucide-react'
 import { lazy, Suspense, useState } from 'react'
 import { PermissionBadge, RoomDot } from '../components/booking/badges'
 import { BookingListItem, EmptyState } from '../components/booking/BookingListItem'
-import { RejectDialog } from '../components/booking/RejectDialog'
+import { DecisionDialog } from '../components/booking/DecisionDialog'
 import { Avatar } from '../components/layout/Avatar'
 import { Button } from '../components/ui/Button'
 import { Alert } from '../components/ui/fields'
 import { Tabs } from '../components/ui/Tabs'
 import { useApp } from '../hooks/useApp'
-import { useApprove } from '../hooks/useApprove'
-import { formatDateTime, formatTimeRange } from '../lib/dates'
-import { findConflicts, getPermission } from '../services/bookingRules'
+import { cn } from '../lib/cn'
+import { formatDate, formatDateTime, formatShortDate, formatTimeRange } from '../lib/dates'
+import { findConflicts, getPermission, isExpiredRequest } from '../services/bookingRules'
 import type { Booking } from '../types'
 import { IS_DEMO } from '../config'
 
@@ -31,13 +31,15 @@ export function AdminPage() {
     return (
       <div className="flex h-full items-center justify-center p-6">
         <EmptyState icon={<ShieldAlert />} title="Ingen tilgang">
-          Administrasjonssiden er kun for administratorer. Bytt til administratorbrukeren øverst til høyre.
+          Administrasjonssiden er kun for administratorer.
+          {IS_DEMO && ' Bytt til administratorbrukeren øverst til høyre.'}
         </EmptyState>
       </div>
     )
   }
 
-  const pending = app.data.bookings.filter((b) => b.status === 'PENDING').sort((a, b) => a.start.localeCompare(b.start))
+  // Expired requests can no longer be approved, so they are not in the queue.
+  const pending = app.data.bookings.filter((b) => b.status === 'PENDING' && !isExpiredRequest(b)).sort((a, b) => a.start.localeCompare(b.start))
   const processed = app.data.bookings
     .filter((b) => b.requiresApproval && b.decidedAt)
     .sort((a, b) => (b.decidedAt ?? '').localeCompare(a.decidedAt ?? ''))
@@ -88,10 +90,14 @@ export function AdminPage() {
   )
 }
 
+type Deciding = { booking: Booking; decision: 'approve' | 'reject'; wholeSeries?: { count: number } }
+
+/**
+ * Pending requests. Two or more open requests from the same series are shown as one item with
+ * the count and date range, which expands to the single occurrences.
+ */
 function PendingList({ bookings }: { bookings: Booking[] }) {
-  const app = useApp()
-  const { approve, busyId } = useApprove()
-  const [rejecting, setRejecting] = useState<Booking | null>(null)
+  const [deciding, setDeciding] = useState<Deciding | null>(null)
 
   if (bookings.length === 0) {
     return (
@@ -101,71 +107,186 @@ function PendingList({ bookings }: { bookings: Booking[] }) {
     )
   }
 
+  // Keep the list sorted by start; a series takes the place of its first open request.
+  const groups: Booking[][] = []
+  const bySeries = new Map<string, Booking[]>()
+  for (const b of bookings) {
+    const existing = b.seriesId ? bySeries.get(b.seriesId) : undefined
+    if (existing) {
+      existing.push(b)
+    } else {
+      const group = [b]
+      groups.push(group)
+      if (b.seriesId) bySeries.set(b.seriesId, group)
+    }
+  }
+
   return (
     <>
       <ul className="space-y-3">
-        {bookings.map((b) => {
-          const conflicts = findConflicts(app.data.bookings, b.roomId, b.start, b.end, b.id)
-          const competing = app.data.bookings.filter(
-            (o) =>
-              o.id !== b.id &&
-              o.status === 'PENDING' &&
-              o.roomId === b.roomId &&
-              o.start < b.end &&
-              b.start < o.end,
-          )
-          return (
-            <BookingListItem
-              key={b.id}
-              booking={b}
-              meta={
-                <>
-                  <span className="flex items-center gap-1.5">
-                    <User /> {app.user(b.requestedById)?.name ?? b.requestedByName}
-                  </span>
-                </>
-              }
-              actions={
-                <>
-                  <Button size="sm" onClick={() => setRejecting(b)}>
-                    <X className="size-4" /> Avslå
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="success"
-                    disabled={conflicts.length > 0 || busyId === b.id}
-                    onClick={() => approve(b)}
-                    title={conflicts.length ? 'Rommet er allerede booket i dette tidsrommet' : undefined}
-                  >
-                    <Check className="size-4" /> Godkjenn
-                  </Button>
-                </>
-              }
-            >
-              {b.description && <p className="mt-2 text-sm text-slate-700">{b.description}</p>}
-              <p className="mt-2 text-xs text-slate-500">Sendt {formatDateTime(b.createdAt)}</p>
-              {conflicts.length > 0 && (
-                <Alert tone="error" className="mt-3">
-                  Kan ikke godkjennes: {app.room(b.roomId)?.name} er allerede booket av{' '}
-                  {conflicts
-                    .map((c) => `${app.organization(c.organizationId)?.name} («${c.title}», ${formatTimeRange(c.start, c.end)})`)
-                    .join(', ')}
-                  .
-                </Alert>
-              )}
-              {conflicts.length === 0 && competing.length > 0 && (
-                <Alert tone="warning" className="mt-3">
-                  Overlapper med {competing.length === 1 ? 'en annen søknad' : `${competing.length} andre søknader`}:{' '}
-                  {competing.map((c) => `«${c.title}» (${app.organization(c.organizationId)?.name})`).join(', ')}. Bare én
-                  kan godkjennes.
-                </Alert>
-              )}
-            </BookingListItem>
-          )
-        })}
+        {groups.map((group) =>
+          group.length > 1 ? (
+            <SeriesRequestItem key={group[0].seriesId} bookings={group} onDecide={setDeciding} />
+          ) : (
+            <RequestItem key={group[0].id} booking={group[0]} onDecide={setDeciding} />
+          ),
+        )}
       </ul>
-      {rejecting && <RejectDialog booking={rejecting} onClose={() => setRejecting(null)} />}
+      {deciding && <DecisionDialog {...deciding} onClose={() => setDeciding(null)} />}
     </>
+  )
+}
+
+function useRequestChecks(b: Booking) {
+  const app = useApp()
+  const conflicts = findConflicts(app.data.bookings, b.roomId, b.start, b.end, b.id)
+  const competing = app.data.bookings.filter(
+    (o) => o.id !== b.id && o.status === 'PENDING' && o.roomId === b.roomId && o.start < b.end && b.start < o.end,
+  )
+  return { conflicts, competing }
+}
+
+function RequestItem({ booking: b, onDecide }: { booking: Booking; onDecide: (d: Deciding) => void }) {
+  const app = useApp()
+  const { conflicts, competing } = useRequestChecks(b)
+  return (
+    <BookingListItem
+      booking={b}
+      meta={
+        <span className="flex items-center gap-1.5">
+          <User /> {app.user(b.requestedById)?.name ?? b.requestedByName}
+        </span>
+      }
+      actions={
+        <>
+          <Button size="sm" onClick={() => onDecide({ booking: b, decision: 'reject' })}>
+            <X className="size-4" /> Avslå
+          </Button>
+          <Button
+            size="sm"
+            variant="success"
+            disabled={conflicts.length > 0}
+            onClick={() => onDecide({ booking: b, decision: 'approve' })}
+            title={conflicts.length ? 'Rommet er allerede booket i dette tidsrommet' : undefined}
+          >
+            <Check className="size-4" /> Godkjenn
+          </Button>
+        </>
+      }
+    >
+      {b.description && <p className="mt-2 text-sm text-slate-700">{b.description}</p>}
+      <p className="mt-2 text-xs text-slate-500">Sendt {formatDateTime(b.createdAt)}</p>
+      {conflicts.length > 0 && (
+        <Alert tone="error" className="mt-3">
+          Kan ikke godkjennes: {app.roomOf(b).name} er allerede booket av{' '}
+          {conflicts
+            .map((c) => `${app.organization(c.organizationId)?.name} («${c.title}», ${formatTimeRange(c.start, c.end)})`)
+            .join(', ')}
+          .
+        </Alert>
+      )}
+      {conflicts.length === 0 && competing.length > 0 && (
+        <Alert tone="warning" className="mt-3">
+          Overlapper med {competing.length === 1 ? 'en annen søknad' : `${competing.length} andre søknader`}:{' '}
+          {competing.map((c) => `«${c.title}» (${app.organization(c.organizationId)?.name})`).join(', ')}. Bare én
+          kan godkjennes.
+        </Alert>
+      )}
+    </BookingListItem>
+  )
+}
+
+function SeriesRequestItem({ bookings, onDecide }: { bookings: Booking[]; onDecide: (d: Deciding) => void }) {
+  const app = useApp()
+  const [open, setOpen] = useState(false)
+  const first = bookings[0]
+  const last = bookings[bookings.length - 1]
+  const taken = bookings.filter((b) => findConflicts(app.data.bookings, b.roomId, b.start, b.end, b.id).length > 0)
+  const wholeSeries = { count: bookings.length }
+
+  return (
+    <BookingListItem
+      booking={first}
+      meta={
+        <>
+          <span className="flex items-center gap-1.5">
+            <User /> {app.user(first.requestedById)?.name ?? first.requestedByName}
+          </span>
+          <span className="flex items-center gap-1.5 font-medium text-slate-700">
+            <Repeat /> {bookings.length} søknader · {formatShortDate(first.start)}–{formatShortDate(last.start)}
+          </span>
+        </>
+      }
+      actions={
+        <>
+          <Button size="sm" onClick={() => onDecide({ booking: first, decision: 'reject', wholeSeries })}>
+            <X className="size-4" /> Avslå hele serien
+          </Button>
+          <Button
+            size="sm"
+            variant="success"
+            disabled={taken.length === bookings.length}
+            onClick={() => onDecide({ booking: first, decision: 'approve', wholeSeries })}
+          >
+            <Check className="size-4" /> Godkjenn hele serien
+          </Button>
+        </>
+      }
+    >
+      {first.description && <p className="mt-2 text-sm text-slate-700">{first.description}</p>}
+      <p className="mt-2 text-xs text-slate-500">Sendt {formatDateTime(first.createdAt)}</p>
+      {taken.length > 0 && (
+        <Alert tone={taken.length === bookings.length ? 'error' : 'warning'} className="mt-3">
+          {taken.length === bookings.length
+            ? 'Alle datoene er allerede booket og kan ikke godkjennes.'
+            : `${taken.length} av ${bookings.length} datoer er allerede booket. De blir stående som søknader når du godkjenner serien.`}
+        </Alert>
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline"
+      >
+        <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
+        {open ? 'Skjul datoene' : 'Vis datoene og behandle enkeltvis'}
+      </button>
+      {open && (
+        <ul className="mt-2 divide-y divide-slate-100 rounded-lg ring-1 ring-slate-200">
+          {bookings.map((b) => {
+            const conflict = taken.includes(b)
+            return (
+              <li key={b.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+                <button
+                  type="button"
+                  onClick={() => app.openBookingDetails(b.id)}
+                  className="min-w-0 flex-1 text-left hover:underline"
+                >
+                  <span className="block truncate text-slate-800 first-letter:uppercase">{formatDate(b.start)}</span>
+                  <span className={cn('block text-xs tabular-nums', conflict ? 'text-red-700' : 'text-slate-500')}>
+                    {formatTimeRange(b.start, b.end)}
+                    {b.roomId !== first.roomId && ` · ${app.roomOf(b).name}`}
+                    {conflict && ' · opptatt'}
+                  </span>
+                </button>
+                <Button size="sm" variant="ghost" onClick={() => onDecide({ booking: b, decision: 'reject' })} aria-label={`Avslå ${formatDate(b.start)}`}>
+                  <X className="size-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={conflict}
+                  onClick={() => onDecide({ booking: b, decision: 'approve' })}
+                  aria-label={`Godkjenn ${formatDate(b.start)}`}
+                >
+                  <Check className="size-4 text-emerald-700" />
+                </Button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </BookingListItem>
   )
 }
 
@@ -236,7 +357,7 @@ function AccessOverview() {
                       <span>
                         <span className="block font-medium text-slate-900">{room.name}</span>
                         <span className="block text-xs text-slate-500">
-                          {room.capacity} plasser · {room.location}
+                          {[room.capacity && `${room.capacity} plasser`, room.location].filter(Boolean).join(' · ')}
                         </span>
                       </span>
                     </span>

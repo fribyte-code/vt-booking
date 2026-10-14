@@ -1,4 +1,16 @@
-import type { AppData, Booking, BookingStatus, Organization, Permission, Room, User } from '../types'
+import type {
+  AppData,
+  Booking,
+  BookingStatus,
+  Invitation,
+  OccurrenceSlot,
+  Organization,
+  Permission,
+  Room,
+  SeriesApproved,
+  TimeSlot,
+  User,
+} from '../types'
 import { type ApiClient, createApiClient } from './apiClient'
 import type { DataSource, DateRange } from './dataSource'
 
@@ -20,12 +32,15 @@ interface RoomResponse {
   location: string | null
   capacity: number | null
   color: string
+  status: 'ACTIVE' | 'DISABLED'
   permissions: { organizationId: string; permission: Permission }[]
 }
 
 interface BookingResponse {
   id: string
   roomId: string
+  /** Also set for archived rooms, which /api/rooms leaves out. */
+  roomName: string | null
   organizationId: string
   organizationName: string | null
   requestedById: string | null
@@ -41,6 +56,12 @@ interface BookingResponse {
   decidedByName: string | null
   decisionComment: string | null
   cancelledAt: string | null
+  cancelledById: string | null
+  cancelledByName: string | null
+  cancellationReason: string | null
+  updatedAt: string | null
+  updatedByName: string | null
+  seriesId: string | null
   version: number
 }
 
@@ -81,10 +102,30 @@ function toRoom(r: RoomResponse): Room {
     name: r.name,
     description: r.description ?? '',
     location: r.location ?? '',
-    capacity: r.capacity ?? 0,
+    capacity: r.capacity ?? undefined,
     color: r.color,
+    status: r.status,
     permissions: Object.fromEntries(r.permissions.map((p) => [p.organizationId, p.permission])),
   }
+}
+
+/** When something happened to the booking that its requester should hear about, if anything. */
+function newsAtOf(b: BookingResponse): string | null {
+  // A cancellation by someone else is news for the requester too, from the time it happened.
+  const cancelledByOther = !!b.cancelledById && b.cancelledById !== b.requestedById
+  return b.status === 'CANCELLED' && cancelledByOther ? b.cancelledAt : b.decidedAt
+}
+
+/**
+ * Whether the requester has seen the news. `seenUntil` is the newest news time they marked as read
+ * in this browser. Without one (first login here), news about bookings that have already ended
+ * counts as seen, so a new device doesn't list the whole history.
+ */
+function isSeen(b: BookingResponse, seenUntil: string): boolean {
+  const newsAt = newsAtOf(b)
+  if (!newsAt) return false
+  if (!seenUntil) return Date.parse(b.end) <= Date.now()
+  return Date.parse(newsAt) <= Date.parse(seenUntil)
 }
 
 function toBooking(b: BookingResponse, seenUntil: string): Booking {
@@ -106,8 +147,15 @@ function toBooking(b: BookingResponse, seenUntil: string): Booking {
     decidedByName: b.decidedByName ?? undefined,
     decisionComment: b.decisionComment ?? undefined,
     // The API has no notifications yet, so "seen" is remembered per browser.
-    decisionSeen: !!b.decidedAt && Date.parse(b.decidedAt) <= Date.parse(seenUntil),
+    decisionSeen: isSeen(b, seenUntil),
     cancelledAt: b.cancelledAt ?? undefined,
+    cancelledById: b.cancelledById ?? undefined,
+    cancelledByName: b.cancelledByName ?? undefined,
+    cancellationReason: b.cancellationReason ?? undefined,
+    updatedAt: b.updatedAt ?? undefined,
+    updatedByName: b.updatedByName ?? undefined,
+    seriesId: b.seriesId ?? undefined,
+    roomName: b.roomName ?? undefined,
     version: b.version,
   }
 }
@@ -122,14 +170,20 @@ function clamp(range: DateRange): DateRange {
 export function createApiDataSource(api: ApiClient = createApiClient()): DataSource {
   let userId: string | null = null
   let mustChangePassword = false
+  // The newest news time among the bookings last loaded, i.e. what the user can have seen.
+  let latestNewsAt = ''
+
+  const map = (b: BookingResponse) => toBooking(b, readSeen(userId ?? ''))
+  const id = encodeURIComponent
+  const blankToUndefined = (text?: string) => text?.trim() || undefined
 
   const decide = (booking: Booking, action: 'approve' | 'reject' | 'cancel', extra: object = {}) =>
     api
-      .post<BookingResponse>(`/api/bookings/${encodeURIComponent(booking.id)}/${action}`, {
+      .post<BookingResponse>(`/api/bookings/${id(booking.id)}/${action}`, {
         version: booking.version,
         ...extra,
       })
-      .then((b) => toBooking(b, readSeen(userId ?? '')))
+      .then(map)
 
   return {
     async getSessionUserId() {
@@ -151,18 +205,24 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
       const { start, end } = clamp(range)
       const query = new URLSearchParams({ from: start, to: end })
 
-      const [rooms, organizations, calendar, mine, requests, users] = await Promise.all([
+      const [rooms, organizations, calendar, mine, requests, users, invitations] = await Promise.all([
         api.get<RoomResponse[]>('/api/rooms'),
         api.get<{ id: string; name: string }[]>('/api/organizations'),
         api.get<BookingResponse[]>(`/api/bookings?${query}`),
         api.get<BookingResponse[]>('/api/bookings/mine'),
         isAdmin ? api.get<BookingResponse[]>('/api/bookings/requests') : Promise.resolve([]),
         isAdmin ? api.get<AdminUserResponse[]>('/api/admin/users') : Promise.resolve([]),
+        api.get<Invitation[]>('/api/me/invitations'),
       ])
 
       const seenUntil = readSeen(me.id)
       const bookings = new Map<string, Booking>()
-      for (const b of [...calendar, ...mine, ...requests]) bookings.set(b.id, toBooking(b, seenUntil))
+      latestNewsAt = ''
+      for (const b of [...calendar, ...mine, ...requests]) {
+        bookings.set(b.id, toBooking(b, seenUntil))
+        const newsAt = b.requestedById === me.id ? newsAtOf(b) : null
+        if (newsAt && (!latestNewsAt || Date.parse(newsAt) > Date.parse(latestNewsAt))) latestNewsAt = newsAt
+      }
 
       const orgs = new Map<string, Organization>(
         organizations.map((o) => [o.id, { id: o.id, name: o.name, description: '' }]),
@@ -180,21 +240,108 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
         organizations: [...orgs.values()],
         rooms: rooms.map(toRoom),
         bookings: [...bookings.values()],
+        invitations,
       } satisfies AppData
     },
 
-    async createBooking(input) {
-      const created = await api.post<BookingResponse>('/api/bookings', input)
-      return toBooking(created, readSeen(userId ?? ''))
+    async listBookings(range, roomId) {
+      const { start, end } = clamp(range)
+      const query = new URLSearchParams({ from: start, to: end, roomId })
+      const found = await api.get<BookingResponse[]>(`/api/bookings?${query}`)
+      const seenUntil = readSeen(userId ?? '')
+      return found.map((b) => toBooking(b, seenUntil))
     },
-    approveBooking: (booking) => decide(booking, 'approve'),
+
+    async createBooking(input) {
+      return map(await api.post<BookingResponse>('/api/bookings', input))
+    },
+    approveBooking: (booking, comment) => decide(booking, 'approve', { comment: blankToUndefined(comment) }),
     rejectBooking: (booking, reason) => decide(booking, 'reject', { reason }),
-    cancelBooking: (booking) => decide(booking, 'cancel'),
+    cancelBooking: (booking, reason) => decide(booking, 'cancel', { reason: blankToUndefined(reason) }),
+    async updateBooking(booking, input) {
+      const updated = await api.put<BookingResponse>(`/api/bookings/${id(booking.id)}`, {
+        version: booking.version,
+        roomId: input.roomId,
+        title: input.title,
+        description: blankToUndefined(input.description),
+        start: input.start,
+        end: input.end,
+      })
+      return map(updated)
+    },
+
+    series: {
+      async preview(input) {
+        const result = await api.post<{ occurrences: (TimeSlot & { conflict: boolean })[] }>(
+          '/api/bookings/series/preview',
+          { ...input, description: blankToUndefined(input.description), skipConflicts: undefined },
+        )
+        return result.occurrences
+      },
+      async create(input) {
+        const result = await api.post<{ seriesId: string; created: BookingResponse[]; skipped: TimeSlot[] }>(
+          '/api/bookings/series',
+          { ...input, description: blankToUndefined(input.description), skipConflicts: input.skipConflicts || undefined },
+        )
+        return { seriesId: result.seriesId, created: result.created.map(map), skipped: result.skipped }
+      },
+      async list(seriesId) {
+        return (await api.get<BookingResponse[]>(`/api/bookings/series/${id(seriesId)}`)).map(map)
+      },
+      async update(from, input, options = {}) {
+        const result = await api.put<{ updated: BookingResponse[]; skipped: OccurrenceSlot[] }>(
+          `/api/bookings/series/${id(from.seriesId ?? '')}`,
+          {
+            fromBookingId: from.id,
+            version: from.version,
+            roomId: input.roomId,
+            title: input.title,
+            description: blankToUndefined(input.description),
+            start: input.start,
+            end: input.end,
+            skipConflicts: options.skipConflicts || undefined,
+            dryRun: options.dryRun || undefined,
+          },
+        )
+        return { updated: result.updated.map(map), skipped: result.skipped }
+      },
+      async cancel(seriesId, { from, reason }) {
+        const cancelled = await api.post<BookingResponse[]>(`/api/bookings/series/${id(seriesId)}/cancel`, {
+          fromBookingId: from?.id,
+          reason: blankToUndefined(reason),
+        })
+        return cancelled.map(map)
+      },
+      async approve(seriesId, comment) {
+        const result = await api.post<{ approved: BookingResponse[]; notApproved: SeriesApproved['notApproved'] }>(
+          `/api/bookings/series/${id(seriesId)}/approve`,
+          { comment: blankToUndefined(comment) },
+        )
+        return { approved: result.approved.map(map), notApproved: result.notApproved }
+      },
+      async reject(seriesId, reason) {
+        return (await api.post<BookingResponse[]>(`/api/bookings/series/${id(seriesId)}/reject`, { reason })).map(map)
+      },
+    },
+
+    invitations: {
+      async accept(invitationId) {
+        await api.post<MeResponse>(`/api/me/invitations/${id(invitationId)}/accept`)
+      },
+      async decline(invitationId) {
+        await api.send('POST', `/api/me/invitations/${id(invitationId)}/decline`)
+      },
+    },
 
     async markDecisionsSeen() {
       if (!userId) return
+      // Up to the newest news the user was shown, not "now": a decision made after the last load
+      // must not be marked as read without having been seen. Server timestamps, so no clock skew.
+      const previous = readSeen(userId)
+      const until = latestNewsAt && (!previous || Date.parse(latestNewsAt) > Date.parse(previous)) ? latestNewsAt : previous
+      if (!until) return
       try {
-        localStorage.setItem(SEEN_KEY + userId, new Date().toISOString())
+        localStorage.setItem(SEEN_KEY + userId, until)
       } catch {
         // Notifications are a convenience; without storage they just stay unread.
       }

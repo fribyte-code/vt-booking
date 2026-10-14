@@ -10,6 +10,7 @@ import { Button } from '../ui/Button'
 import { Alert, Field, Input, Select, Textarea } from '../ui/fields'
 import { Modal } from '../ui/Modal'
 import { Chip } from './Chip'
+import { FutureBookingsDialog } from './FutureBookingsDialog'
 import { useAdminData } from './useAdminData'
 
 const PERMISSIONS: Permission[] = ['DIRECT', 'REQUEST', 'NONE']
@@ -120,9 +121,16 @@ function RoomDialog({ room, onClose, onSaved }: { room: AdminRoom | null; onClos
   )
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [confirmClosing, setConfirmClosing] = useState(false)
   const set = (patch: Partial<RoomFields>) => setFields((f) => ({ ...f, ...patch }))
+  // Closing or archiving the room: the administrator decides what happens to its future bookings first.
+  const closing = !!room && fields.status !== room.status && (fields.status === 'DISABLED' || fields.status === 'ARCHIVED')
 
   const save = async () => {
+    if (closing) {
+      setConfirmClosing(true)
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -133,6 +141,26 @@ function RoomDialog({ room, onClose, onSaved }: { room: AdminRoom | null; onClos
       setError(errorMessage(err))
       setBusy(false)
     }
+  }
+
+  if (room && confirmClosing) {
+    const archiving = fields.status === 'ARCHIVED'
+    return (
+      <FutureBookingsDialog
+        title={archiving ? `Arkivere ${room.name}?` : `Stenge ${room.name}?`}
+        intro={
+          archiving
+            ? 'Et arkivert rom vises ikke lenger og kan ikke bookes. Bookinger som beholdes, vises fortsatt, men kan bare få ny tittel eller kanselleres.'
+            : 'Et stengt rom vises, men kan ikke bookes eller få nye søknader.'
+        }
+        load={() => adminApi.futureBookings('rooms', room.id)}
+        onClose={() => setConfirmClosing(false)}
+        onConfirm={async (cancelFutureBookings) => {
+          await adminApi.updateRoom(room.id, { ...fields, cancelFutureBookings })
+          onSaved()
+        }}
+      />
+    )
   }
 
   return (

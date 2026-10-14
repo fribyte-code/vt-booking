@@ -4,6 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { IS_DEMO, LOGIN_URL } from '../../config'
 import { useApp } from '../../hooks/useApp'
 import { cn } from '../../lib/cn'
+import { isExpiredRequest } from '../../services/bookingRules'
 import { Button } from '../ui/Button'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 
@@ -35,8 +36,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { pathname } = useLocation()
   const [confirmReset, setConfirmReset] = useState(false)
 
-  const pendingCount = data.bookings.filter((b) => b.status === 'PENDING').length
-  const myPendingCount = data.bookings.filter((b) => b.status === 'PENDING' && b.requestedById === currentUser.id).length
+  const open = data.bookings.filter((b) => b.status === 'PENDING' && !isExpiredRequest(b))
+  const pendingCount = open.length
+  const myPendingCount = open.filter((b) => b.requestedById === currentUser.id).length
   const onCalendar = pathname === '/'
 
   return (
@@ -84,8 +86,11 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                 >
                   {checked && <Check className="size-3 text-white" strokeWidth={3.5} />}
                 </span>
-                <span className="flex-1 text-sm text-slate-700">{room.name}</span>
-                <span className="text-xs text-slate-400 tabular-nums">{room.capacity}</span>
+                <span className="flex-1 text-sm text-slate-700">
+                  {room.name}
+                  {room.status === 'DISABLED' && <span className="text-slate-400"> (stengt)</span>}
+                </span>
+                {room.capacity && <span className="text-xs text-slate-400 tabular-nums">{room.capacity}</span>}
               </label>
             )
           })}
