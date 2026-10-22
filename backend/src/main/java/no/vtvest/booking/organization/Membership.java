@@ -7,6 +7,11 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 
+/**
+ * Written with JdbcTemplate by AdminService, OrgMemberService and InvitationService; JPA only reads
+ * it. Not {@code @Immutable}: booking writes lock this row through JPA, and Hibernate refuses locks
+ * on read-only entities.
+ */
 @Entity
 @Table(name = "memberships")
 public class Membership {

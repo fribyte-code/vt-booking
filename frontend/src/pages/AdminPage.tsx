@@ -1,5 +1,6 @@
 import { Check, ChevronDown, Inbox, Repeat, ShieldAlert, User, X } from 'lucide-react'
 import { lazy, Suspense, useState } from 'react'
+import { Chip } from '../components/admin/Chip'
 import { PermissionBadge, RoomDot } from '../components/booking/badges'
 import { BookingListItem, EmptyState } from '../components/booking/BookingListItem'
 import { DecisionDialog } from '../components/booking/DecisionDialog'
@@ -398,11 +399,5 @@ function AccessOverview() {
         </ul>
       </section>
     </div>
-  )
-}
-
-function Chip({ label }: { label: string }) {
-  return (
-    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium whitespace-nowrap text-slate-700">{label}</span>
   )
 }

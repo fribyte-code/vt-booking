@@ -65,14 +65,6 @@ interface BookingResponse {
   version: number
 }
 
-interface AdminUserResponse {
-  id: string
-  email: string
-  displayName: string
-  globalRole: 'USER' | 'SYSTEM_ADMIN'
-  memberships: { organizationId: string; role: string }[]
-}
-
 /** The API caps calendar queries at 62 days. */
 const MAX_RANGE_MS = 62 * 24 * 60 * 60 * 1000
 const SEEN_KEY = 'vt-booking:decisions-seen:'
@@ -85,7 +77,7 @@ function readSeen(userId: string): string {
   }
 }
 
-function toUser(me: MeResponse | AdminUserResponse): User {
+function toUser(me: MeResponse): User {
   return {
     id: me.id,
     name: me.displayName,
@@ -170,6 +162,8 @@ function clamp(range: DateRange): DateRange {
 export function createApiDataSource(api: ApiClient = createApiClient()): DataSource {
   let userId: string | null = null
   let mustChangePassword = false
+  // The /api/me answer of the session check, used once by the load that follows it.
+  let sessionMe: MeResponse | null = null
   // The newest news time among the bookings last loaded, i.e. what the user can have seen.
   let latestNewsAt = ''
 
@@ -191,7 +185,9 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
         const me = await api.get<MeResponse>('/api/me')
         userId = me.id
         mustChangePassword = me.mustChangePassword
+        sessionMe = me
       } catch (err) {
+        sessionMe = null
         if ((err as { code?: string }).code === 'UNAUTHENTICATED') return (userId = null)
         throw err
       }
@@ -199,19 +195,19 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
     },
 
     async load(range) {
-      const me = await api.get<MeResponse>('/api/me')
+      const me = sessionMe ?? (await api.get<MeResponse>('/api/me'))
+      sessionMe = null
       userId = me.id
       const isAdmin = me.globalRole === 'SYSTEM_ADMIN'
       const { start, end } = clamp(range)
       const query = new URLSearchParams({ from: start, to: end })
 
-      const [rooms, organizations, calendar, mine, requests, users, invitations] = await Promise.all([
+      const [rooms, organizations, calendar, mine, requests, invitations] = await Promise.all([
         api.get<RoomResponse[]>('/api/rooms'),
         api.get<{ id: string; name: string }[]>('/api/organizations'),
         api.get<BookingResponse[]>(`/api/bookings?${query}`),
         api.get<BookingResponse[]>('/api/bookings/mine'),
         isAdmin ? api.get<BookingResponse[]>('/api/bookings/requests') : Promise.resolve([]),
-        isAdmin ? api.get<AdminUserResponse[]>('/api/admin/users') : Promise.resolve([]),
         api.get<Invitation[]>('/api/me/invitations'),
       ])
 
@@ -234,9 +230,9 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
         }
       }
 
-      const meUser = toUser(me)
       return {
-        users: isAdmin ? users.map((u) => (u.id === me.id ? meUser : toUser(u))) : [meUser],
+        // Only the signed-in user: other people's names come with the bookings (requestedByName and so on).
+        users: [toUser(me)],
         organizations: [...orgs.values()],
         rooms: rooms.map(toRoom),
         bookings: [...bookings.values()],
@@ -354,11 +350,13 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
       async logout() {
         await api.logout()
         userId = null
+        sessionMe = null
       },
       passwordChangeRequired: () => mustChangePassword,
       async changePassword(currentPassword, newPassword) {
         await api.send('POST', '/api/me/password', { currentPassword, newPassword })
         mustChangePassword = false
+        sessionMe = null
       },
     },
   }

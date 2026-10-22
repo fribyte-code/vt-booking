@@ -1,5 +1,6 @@
 package no.vtvest.booking.admin;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -23,7 +24,7 @@ final class AdminDtos {
 
     // ── Users ──────────────────────────────────────────────────────
 
-    record UserMembership(UUID organizationId, MembershipRole role) {}
+    record UserMembership(@NotNull UUID organizationId, @NotNull MembershipRole role) {}
 
     record AdminUser(
             UUID id,
@@ -40,7 +41,7 @@ final class AdminDtos {
             @NotBlank String email,
             @NotBlank String displayName,
             @NotNull GlobalRole globalRole,
-            List<@NotNull UserMembership> memberships) {}
+            List<@NotNull @Valid UserMembership> memberships) {}
 
     /**
      * Null fields are left unchanged. Disabling a user always cancels their future pending

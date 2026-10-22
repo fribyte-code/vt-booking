@@ -123,7 +123,7 @@ describe('API data source', () => {
     expect(calls.some((c) => c.path.startsWith('/api/admin') || c.path === '/api/bookings/requests')).toBe(false)
   })
 
-  it('treats SYSTEM_ADMIN as an administrator and loads the admin endpoints', async () => {
+  it('treats SYSTEM_ADMIN as an administrator and loads the request queue, but not the user list', async () => {
     const admin = { ...ME, id: 'u-admin', globalRole: 'SYSTEM_ADMIN', memberships: [] }
     const { client, calls } = fakeServer({
       'GET /api/me': () => json(200, admin),
@@ -132,13 +132,35 @@ describe('API data source', () => {
       'GET /api/bookings': () => json(200, []),
       'GET /api/bookings/mine': () => json(200, []),
       'GET /api/bookings/requests': () => json(200, []),
-      'GET /api/admin/users': () => json(200, [admin]),
     })
 
     const data = await createApiDataSource(client).load({ start: '2030-01-01T00:00:00.000Z', end: '2030-01-08T00:00:00.000Z' })
 
     expect(data.users).toEqual([expect.objectContaining({ id: 'u-admin', role: 'ADMIN' })])
-    expect(calls.some((c) => c.path === '/api/admin/users')).toBe(true)
+    expect(calls.some((c) => c.path === '/api/bookings/requests')).toBe(true)
+    // Names of other people come with the bookings; the management pages load users themselves.
+    expect(calls.some((c) => c.path.startsWith('/api/admin'))).toBe(false)
+  })
+
+  it('reuses the session check for the first load, and asks again on later loads', async () => {
+    const { client, calls } = fakeServer({
+      'GET /api/me': () => json(200, ME),
+      'GET /api/rooms': () => json(200, []),
+      'GET /api/organizations': () => json(200, []),
+      'GET /api/bookings': () => json(200, []),
+      'GET /api/bookings/mine': () => json(200, []),
+      'GET /api/me/invitations': () => json(200, []),
+    })
+    const source = createApiDataSource(client)
+    const range = { start: '2030-01-01T00:00:00.000Z', end: '2030-01-08T00:00:00.000Z' }
+    const meCalls = () => calls.filter((c) => c.path === '/api/me').length
+
+    expect(await source.getSessionUserId()).toBe(ME.id)
+    await source.load(range)
+    expect(meCalls()).toBe(1)
+    // A reload (after a change, or an accepted invitation) must see new memberships and roles.
+    await source.load(range)
+    expect(meCalls()).toBe(2)
   })
 
   it('sends the CSRF token and the booking version with decisions', async () => {

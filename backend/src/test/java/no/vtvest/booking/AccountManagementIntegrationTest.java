@@ -84,6 +84,20 @@ class AccountManagementIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    void membershipsWithoutRoleOrOrganizationAreRejectedAndNothingIsCreated() throws Exception {
+        for (String membership : new String[] {
+            "{\"organizationId\":\"%s\"}".formatted(ORG_A), "{\"role\":\"MEMBER\"}", "null"}) {
+            send(post("/api/admin/users"), ADMIN, """
+                    {"email":"ugyldig@example.test","displayName":"Ugyldig","globalRole":"USER","memberships":[%s]}
+                    """.formatted(membership))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("VALIDATION"));
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE email = 'ugyldig@example.test'", Integer.class))
+                .isZero();
+    }
+
+    @Test
     void passwordChangeEndsTheUsersOtherSessions() throws Exception {
         MockHttpSession first = login(KARI_EMAIL, PASSWORD);
         MockHttpSession second = login(KARI_EMAIL, PASSWORD);

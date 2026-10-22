@@ -50,19 +50,26 @@ class AdminService {
 
     @Transactional(readOnly = true)
     List<AdminUser> listUsers() {
-        Map<UUID, List<UserMembership>> memberships = jdbc.query(
-                        "SELECT user_id, organization_id, role FROM memberships",
-                        (rs, i) -> Map.entry(rs.getObject("user_id", UUID.class), new UserMembership(
-                                rs.getObject("organization_id", UUID.class), MembershipRole.valueOf(rs.getString("role")))))
-                .stream()
-                .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
+        Map<UUID, List<UserMembership>> memberships =
+                membershipsByUser("SELECT user_id, organization_id, role FROM memberships");
         return jdbc.query("SELECT * FROM users ORDER BY lower(display_name), lower(email)",
                 (rs, i) -> toUser(rs, memberships.getOrDefault(rs.getObject("id", UUID.class), List.of())));
     }
 
     private AdminUser user(UUID id) {
-        return listUsers().stream().filter(u -> u.id().equals(id)).findFirst()
+        Map<UUID, List<UserMembership>> memberships =
+                membershipsByUser("SELECT user_id, organization_id, role FROM memberships WHERE user_id = ?", id);
+        return jdbc.query("SELECT * FROM users WHERE id = ?",
+                        (rs, i) -> toUser(rs, memberships.getOrDefault(id, List.of())), id)
+                .stream().findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Brukeren finnes ikke."));
+    }
+
+    private Map<UUID, List<UserMembership>> membershipsByUser(String sql, Object... args) {
+        return jdbc.query(sql, (rs, i) -> Map.entry(rs.getObject("user_id", UUID.class), new UserMembership(
+                        rs.getObject("organization_id", UUID.class), MembershipRole.valueOf(rs.getString("role")))), args)
+                .stream()
+                .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
 
     @Transactional
@@ -184,24 +191,33 @@ class AdminService {
 
     // ── Organizations ──────────────────────────────────────────────
 
+    private static final String ORGANIZATIONS = """
+            SELECT o.id, o.name, o.status, count(m.user_id) AS members
+            FROM organizations o LEFT JOIN memberships m ON m.organization_id = o.id
+            """;
+
     @Transactional(readOnly = true)
     List<AdminOrganization> listOrganizations() {
-        return jdbc.query("""
-                SELECT o.id, o.name, o.status, count(m.user_id) AS members
-                FROM organizations o LEFT JOIN memberships m ON m.organization_id = o.id
-                GROUP BY o.id ORDER BY o.status, lower(o.name)
-                """, (rs, i) -> new AdminOrganization(
+        return jdbc.query(ORGANIZATIONS + "GROUP BY o.id ORDER BY o.status, lower(o.name)", AdminService::toOrganization);
+    }
+
+    private static AdminOrganization toOrganization(ResultSet rs, int row) throws SQLException {
+        return new AdminOrganization(
                 rs.getObject("id", UUID.class), rs.getString("name"),
-                OrganizationStatus.valueOf(rs.getString("status")), rs.getInt("members")));
+                OrganizationStatus.valueOf(rs.getString("status")), rs.getInt("members"));
     }
 
     private AdminOrganization organization(UUID id) {
-        return listOrganizations().stream().filter(o -> o.id().equals(id)).findFirst()
+        return jdbc.query(ORGANIZATIONS + "WHERE o.id = ? GROUP BY o.id", AdminService::toOrganization, id)
+                .stream().findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Organisasjonen finnes ikke."));
     }
 
     private void requireOrganization(UUID id) {
-        organization(id);
+        if (!Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM organizations WHERE id = ?)", Boolean.class, id))) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "Organisasjonen finnes ikke.");
+        }
     }
 
     @Transactional
@@ -249,30 +265,38 @@ class AdminService {
 
     @Transactional(readOnly = true)
     List<AdminRoom> listRooms() {
-        Map<UUID, List<RoomAccessEntry>> access = jdbc.query(
-                        "SELECT room_id, organization_id, permission FROM room_access",
-                        (rs, i) -> Map.entry(rs.getObject("room_id", UUID.class), new RoomAccessEntry(
-                                rs.getObject("organization_id", UUID.class), Permission.valueOf(rs.getString("permission")))))
-                .stream()
-                .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
-        return jdbc.query("SELECT * FROM rooms ORDER BY status, lower(name)", (rs, i) -> {
-            UUID id = rs.getObject("id", UUID.class);
-            return new AdminRoom(
-                    id,
-                    rs.getString("name"),
-                    rs.getString("description"),
-                    rs.getString("location"),
-                    (Integer) rs.getObject("capacity"),
-                    rs.getString("color"),
-                    RoomStatus.valueOf(rs.getString("status")),
-                    Permission.valueOf(rs.getString("default_permission")),
-                    new ArrayList<>(access.getOrDefault(id, List.of())));
-        });
+        Map<UUID, List<RoomAccessEntry>> access =
+                accessByRoom("SELECT room_id, organization_id, permission FROM room_access");
+        return jdbc.query("SELECT * FROM rooms ORDER BY status, lower(name)", (rs, i) -> toRoom(rs, access));
     }
 
     private AdminRoom room(UUID id) {
-        return listRooms().stream().filter(r -> r.id().equals(id)).findFirst()
+        Map<UUID, List<RoomAccessEntry>> access =
+                accessByRoom("SELECT room_id, organization_id, permission FROM room_access WHERE room_id = ?", id);
+        return jdbc.query("SELECT * FROM rooms WHERE id = ?", (rs, i) -> toRoom(rs, access), id)
+                .stream().findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Rommet finnes ikke."));
+    }
+
+    private Map<UUID, List<RoomAccessEntry>> accessByRoom(String sql, Object... args) {
+        return jdbc.query(sql, (rs, i) -> Map.entry(rs.getObject("room_id", UUID.class), new RoomAccessEntry(
+                        rs.getObject("organization_id", UUID.class), Permission.valueOf(rs.getString("permission")))), args)
+                .stream()
+                .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
+    }
+
+    private static AdminRoom toRoom(ResultSet rs, Map<UUID, List<RoomAccessEntry>> access) throws SQLException {
+        UUID id = rs.getObject("id", UUID.class);
+        return new AdminRoom(
+                id,
+                rs.getString("name"),
+                rs.getString("description"),
+                rs.getString("location"),
+                (Integer) rs.getObject("capacity"),
+                rs.getString("color"),
+                RoomStatus.valueOf(rs.getString("status")),
+                Permission.valueOf(rs.getString("default_permission")),
+                new ArrayList<>(access.getOrDefault(id, List.of())));
     }
 
     @Transactional

@@ -16,16 +16,18 @@ Krever Docker. `make dev`, `make demo` og `make test` trenger i tillegg Java 21 
 | `make e2e` | Ende-til-ende-test av bookingflyten mot en app som kjører (`make dev`, eller `make up` med `E2E_BASE_URL=http://localhost:8088`) |
 | `make up` | Hele løsningen i Docker (PostgreSQL, Spring Boot, Nginx). Åpne http://localhost:8088. Demoen ligger på http://localhost:8088/demo/. |
 | `make down` | Stopper containerne. Dataene beholdes. |
+| `make bootstrap-admin` | Oppretter den første systemadministratoren (interaktivt) |
 | `make reset-db` | Sletter utviklingsdatabasen etter bekreftelse |
 
-I `make dev` og `make up` logger du inn med en av testbrukerne og passordet `dev`, for eksempel `kari@example.no` eller `admin@example.no`. Alle testbrukerne står i `backend/README.md`.
+Databasen starter tom: det finnes ingen testbrukere, delte passord eller eksempeldata. Første gang oppretter du en systemadministrator med `make bootstrap-admin` (spør etter e-post, navn og passord i terminalen, og nekter hvis det allerede finnes en). Logg inn med den, og opprett organisasjoner, rom og brukere under **Administrasjon**. Nye brukere får et midlertidig passord som må byttes ved første innlogging.
 
-- Utviklingsdatabasen får eksempelbookinger for denne og neste uke hver gang backend starter med `dev`-profilen. Eksisterende bookinger blir aldri endret eller duplisert.
 - «Prøv demo» på innloggingssiden åpner den frittstående demoen. Demoen er et eget bygg med testdata i nettleseren, og den kontakter aldri backend eller databasen.
 - `make dev` stopper backend, frontend og demo med Ctrl+C. Backend starter på nytt automatisk når Java-koden kompileres på nytt, for eksempel fra IDE-en eller med `./mvnw compile`.
-- `make up` bruker Spring-profilen `dev` med testbrukere og felles passord. Oppsettet er bare for lokal testing, ikke for produksjon.
-- Docker-imagene slår ikke på utviklingsinnlogging, eksempeldata eller demoen selv. Det lokale oppsettet bygger frontend med `WITH_DEMO=true`. Backend nekter å starte hvis utviklingsinnlogging er slått på uten `dev`-profilen, og produksjonsbygget av frontend inneholder aldri demodata eller brukerbytte.
+- `make up` kjører backend med Spring-profilen `dev` (standard databasepassord og informasjonskapsler uten HTTPS). Oppsettet er bare for lokal testing, ikke for produksjon. Planen for produksjon står i `docs/DEPLOYMENT.md`.
+- Produksjonsbygget av frontend inneholder aldri demodata eller brukerbytte. Det lokale oppsettet bygger frontend med `WITH_DEMO=true` for å vise demoen ved siden av.
 - Bytt port for `make up` med `make up APP_PORT=9000`.
+
+Mer dokumentasjon: `docs/ARCHITECTURE.md` (hvordan systemet virker), `backend/README.md` (API og regler), `frontend/README.md` (datamoduser og demo) og `docs/OPEN_QUESTIONS.md` (hva som er avklart med Velferdstinget).
 
 ## Funksjonelle krav
 
@@ -64,7 +66,7 @@ Bookingstatuser:
 - `REJECTED` – Avslått.
 - `CANCELLED` – Kansellert.
 
-## Foreslått teknologistack
+## Teknologistack
 
 | Komponent | Teknologi |
 |---|---|
@@ -93,10 +95,13 @@ Sentrale tabeller:
 - ICS/iCal-abonnement for Google Kalender.
 - Import av eksisterende kalenderdata.
 - Bookinghistorikk.
-- Gjentakende bookinger.
-- Begrensning på bookinglengde og hvor langt frem man kan booke.
+- Gjentakende bookinger (implementert: ukentlige serier).
+- Begrensning på bookinglengde og hvor langt frem man kan booke (implementert: maks 12 timer og 180 dager frem).
 
 ## Må avklares med Velferdstinget
+
+Status for hvert spørsmål står i `docs/OPEN_QUESTIONS.md`.
+
 
 1. Skal systemet erstatte Google Kalender helt?
 2. Kan brukere tilhøre flere organisasjoner?
@@ -122,7 +127,7 @@ Systemet skal hostes på egne servere og bygges som en Single Page Application (
 - **Frontend:** React + TypeScript + Vite.
 - **Rendering:** Client-side rendering (CSR), ingen server-side rendering (SSR).
 - **UI:** Tailwind CSS + FullCalendar.
-- **Backend:** Spring Boot REST API. (python fastapi vurderes)
+- **Backend:** Spring Boot REST API.
 - **Database:** PostgreSQL.
 - **Kommunikasjon:** HTTPS og JSON.
 - **Deployment:** Docker Compose.

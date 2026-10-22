@@ -212,13 +212,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // Each mutation reloads the data set.
     const mutate = async <T,>(request: () => Promise<T>) => {
-      let result: T
-      try {
-        result = await request()
-      } catch (err) {
-        handleError(err)
-        throw err
-      }
+      const result = await request().catch(handleError)
       // Wait for fresh data so dialogs close on the updated state. The change itself succeeded,
       // so a failed refresh is reported by the load, not as an error of the change.
       await reloadAndWait()
@@ -287,7 +281,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       declineInvitation: dataSource.invitations
         ? (id) => mutate(() => dataSource.invitations!.decline(id))
         : undefined,
-      markDecisionsSeen: () => mutate(() => dataSource.markDecisionsSeen()),
+      markDecisionsSeen: async () => {
+        await dataSource.markDecisionsSeen().catch(handleError)
+        // Both data sources mark exactly the loaded decisions and cancellations of the user's own
+        // bookings as read, so the loaded data is updated in place instead of loading it again.
+        setData((d) =>
+          d && {
+            ...d,
+            bookings: d.bookings.map((b) =>
+              b.requestedById === userId && (b.decidedAt || b.cancelledAt) && !b.decisionSeen ? { ...b, decisionSeen: true } : b,
+            ),
+          },
+        )
+      },
       resetDemoData: async () => {
         await dataSource.demo?.reset()
         await reloadAndWait()

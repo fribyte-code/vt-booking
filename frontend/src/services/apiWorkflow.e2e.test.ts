@@ -143,8 +143,9 @@ describe.skipIf(!BASE_URL)('API booking workflow (e2e)', () => {
 
     // The admin sees the queue, approves one and rejects the other.
     const adminView = await admin.load(range)
-    expect(adminView.users.map((u) => u.id)).toEqual(expect.arrayContaining([ids.kari, ids.ola, ids.admin]))
-    expect(adminView.users.find((u) => u.id === ids.admin)?.role).toBe('ADMIN')
+    // Only the admin's own user is loaded; other people's names come with the bookings.
+    expect(adminView.users.map((u) => u.id)).toEqual([ids.admin])
+    expect(adminView.users[0].role).toBe('ADMIN')
     const queued = (id: string) => adminView.bookings.find((b) => b.id === id) as Booking
     expect(queued(toApprove.id).requestedByName).toBe('Kari Nordmann')
     expect((await admin.approveBooking(queued(toApprove.id))).status).toBe('APPROVED')

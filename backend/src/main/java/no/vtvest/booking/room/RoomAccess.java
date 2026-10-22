@@ -6,9 +6,11 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.Immutable;
 
-/** Per-organization override of a room's default permission. */
+/** Per-organization override of a room's default permission. Read-only in JPA: written with JdbcTemplate by AdminService. */
 @Entity
+@Immutable
 @Table(name = "room_access")
 public class RoomAccess {
 

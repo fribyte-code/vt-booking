@@ -46,9 +46,9 @@ From the repository root, `make dev` does all of the steps below in one command,
    npm run dev:api    # http://localhost:5173
    ```
 
-3. Log in as one of the seeded users, such as `kari@example.no` or `admin@example.no`, with the password `dev`. The full list is in `../backend/README.md`.
+3. The database starts empty. The first time, create a system administrator from the repository root with `make bootstrap-admin` (it asks for email, name and password), and log in with it. Create organizations, rooms and other users under **Administrasjon**; new users get a temporary password that they must change at first login.
 
-To run the end-to-end workflow test against the running backend (login, direct booking, double-booking refusal, request, approval, rejection, cancellation and logout):
+To run the end-to-end workflow test against the running backend (login, direct booking, double-booking refusal, request, approval, rejection, cancellation and logout). It creates its own users, organizations and rooms directly in the local development database with `psql` and deletes them afterwards:
 
 ```bash
 E2E_BASE_URL=http://localhost:5173 npx vitest run apiWorkflow
@@ -152,12 +152,12 @@ src/
 │   ├── admin/          Management tabs (API mode), future-bookings confirmation
 │   ├── layout/         Top bar, sidebar, user switcher (demo), account menu (API), notifications
 │   └── ui/             Button, Modal, form fields, Tabs, Popover, Toaster
-└── pages/              CalendarPage, MyBookingsPage, AdminPage, LoginPage (API)
+└── pages/              CalendarPage, MyBookingsPage, AdminPage; API only: LoginPage, ChangePasswordPage, OrgMembersPage
 ```
 
 - **One interface, two implementations.** Components use `useApp()`, and `AppProvider` calls the `DataSource`. Editing and series (`updateBooking`, `series.*`) exist in both. Demo-only features (`demo.switchUser`, `demo.reset`) and API-only ones (`auth.*`, `invitations.*`) are optional parts of the interface. Management (deactivation, members, org invitations) calls `adminApi.ts` directly and is only rendered in API mode.
 - **The backend decides.** In API mode, identity comes from the session, and every permission and booking rule is enforced by Spring Boot. The booking form still calls `evaluateBooking` / `evaluateEdit` for live feedback, but the server's answer (a Problem Details `code` and Norwegian `detail`) is what the user sees.
-- **Loading.** API mode loads the calendar's visible range (at most 62 days), the user's own bookings, and for administrators the request queue and user list. The data is reloaded when the calendar moves outside the loaded range and after every change. A spinner next to the calendar title shows a reload in progress.
+- **Loading.** API mode loads the signed-in user, rooms, organizations, invitations, the calendar's visible range (at most 62 days), the user's own bookings, and for administrators the request queue. The first load reuses the `/api/me` answer of the session check. Other people's names come with the bookings, so the user list is only loaded by the management pages. The data is reloaded when the calendar moves outside the loaded range and after every change; "Merk alle som lest" only updates the loaded data. A spinner next to the calendar title shows a reload in progress.
 - **Errors.** A 401 sends the user back to the login page. A `VERSION_CONFLICT` or `INVALID_STATE` reloads the data, because someone else changed the booking. Network failures and server errors are shown as toasts, or as a retry screen before the first load.
 - **CSRF.** The API client reads the `XSRF-TOKEN` cookie and sends it as `X-XSRF-TOKEN` on every POST. It fetches `/api/auth/csrf` when the cookie is missing, for example after login, and retries once if the token is refused.
 - Times are ISO 8601 strings in UTC. IDs are opaque strings: readable in demo mode and UUIDs in API mode.
@@ -174,13 +174,13 @@ src/
 - Dragging in the calendar moves only that occurrence of a series. To move several, use "Endre" → "Denne og alle følgende".
 - The administrator isn't a member of any organization, so they can't make bookings. They approve, reject and cancel.
 - A booking can't cross midnight. An end time of 00:00 means the end of the selected day.
-- Permissions are stored on the room (`room.permissions[orgId]`) for simplicity. In the database, this becomes the `room_access` table.
+- The frontend keeps each room's effective permission per organization on the room (`room.permissions[orgId]`). In API mode the server computes it from the room's default and the `room_access` overrides.
 - The Inter font is bundled with the app (`@fontsource-variable/inter`), so it isn't fetched from a CDN.
 
 ## Known limitations
 
 - **Demo mode has no real authentication or access control.** All checks run in the browser and can be bypassed. API mode relies on the backend for both.
-- API mode only has the backend's development login (`dev` profile). Feide/Google login isn't implemented, so the production backend currently refuses every login.
+- API mode logs in with email and password only. There is no Google or Feide login, and no password reset by email: an administrator resets the password, and the user gets a temporary one.
 - In demo mode, data lives only in this browser's localStorage. It isn't shared between users or devices, and two open tabs don't synchronize.
 - The API has no notifications yet. In API mode, "Merk alle som lest" is remembered per browser in localStorage.
 - In API mode, the booking form's live conflict hint and the admin page's conflict warnings only know about the loaded bookings. The server always checks again.
@@ -188,4 +188,4 @@ src/
 - In API mode, the series list in the booking details comes from the server, but only occurrences in the loaded data can be opened from it.
 - Deactivation and invitation flows exist only in API mode.
 - No email notifications, ICS export or Google Calendar import.
-- The bundle is large (~180 kB gzip), mostly because of FullCalendar. That's fine for a prototype, and code splitting can be added later.
+- The main bundle is large (about 190 kB gzip), mostly because of FullCalendar. The management pages are loaded separately.

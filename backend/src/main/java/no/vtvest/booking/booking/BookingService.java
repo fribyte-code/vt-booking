@@ -36,10 +36,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Booking rules, enforced on every write. Ported from the prototype's
- * frontend/src/services/bookingRules.ts, plus duration and
- * horizon limits (SECURITY_AUDIT VULN-03), and the approval workflow. The database exclusion constraint
- * is the final guarantee against double booking under concurrency.
+ * Booking rules, enforced on every write: membership, room permission, time limits (no past
+ * bookings, max 12 hours, max 180 days ahead), conflicts, and the approval workflow. The
+ * frontend mirrors them in bookingRules.ts for live feedback only. The database exclusion
+ * constraint is the final guarantee against double booking under concurrency.
  */
 @Service
 public class BookingService {
@@ -301,9 +301,9 @@ public class BookingService {
 
     /**
      * Approves a pending request. Access and availability may have changed since the request
-     * was made, so membership, permission and conflicts are all checked again (SECURITY_AUDIT
-     * VULN-04). Two admins approving overlapping requests at once is stopped by the exclusion
-     * constraint; two admins approving the same request by the version check.
+     * was made, so membership, permission and conflicts are all checked again. Two admins
+     * approving overlapping requests at once is stopped by the exclusion constraint; two admins
+     * approving the same request by the version check.
      */
     @Transactional
     public BookingResponse approve(User actor, UUID id, ApproveBookingRequest request) {
@@ -386,7 +386,7 @@ public class BookingService {
 
     /**
      * Admins can cancel any booking, organization admins their organization's bookings, and
-     * requesters their own while they are still members (SECURITY_AUDIT VULN-07).
+     * requesters their own while they are still members ({@link #mayChange}).
      */
     @Transactional
     public BookingResponse cancel(User actor, UUID id, CancelBookingRequest request) {

@@ -39,7 +39,7 @@ class BootstrapAdminIntegrationTest extends IntegrationTest {
     void createsAnActiveSystemAdminWhoCanLogIn() throws Exception {
         assertThat(bootstrap.adminExists()).isFalse();
 
-        UUID id = bootstrap.createFirstAdmin(" vt-admin@example.test ", " Første Admin ", NEW_PASSWORD);
+        UUID id = bootstrap.createFirstAdmin(" VT-Admin@Example.test ", " Første Admin ", NEW_PASSWORD);
 
         assertThat(bootstrap.adminExists()).isTrue();
         var row = jdbc.queryForMap("SELECT email, display_name, global_role, status, password_hash FROM users WHERE id = ?", id);
@@ -78,6 +78,17 @@ class BootstrapAdminIntegrationTest extends IntegrationTest {
         assertThatThrownBy(() -> bootstrap.createFirstAdmin("KARI@example.test", "Kari", NEW_PASSWORD))
                 .isInstanceOf(BootstrapRefusedException.class)
                 .hasMessageContaining("e-postadressen");
+        assertThat(bootstrap.adminExists()).isFalse();
+    }
+
+    @Test
+    void usesTheSameEmailAndNameRulesAsOtherAccounts() {
+        assertThatThrownBy(() -> bootstrap.createFirstAdmin("ikke-en-epost", "A", NEW_PASSWORD))
+                .isInstanceOf(BootstrapRefusedException.class)
+                .hasMessage("Ugyldig e-postadresse.");
+        assertThatThrownBy(() -> bootstrap.createFirstAdmin("vt-admin@example.test", " ", NEW_PASSWORD))
+                .isInstanceOf(BootstrapRefusedException.class)
+                .hasMessage("Navnet må ha 1 til 120 tegn.");
         assertThat(bootstrap.adminExists()).isFalse();
     }
 

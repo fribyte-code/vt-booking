@@ -2,8 +2,9 @@ package no.vtvest.booking.bootstrap;
 
 import java.util.Arrays;
 import java.util.UUID;
-import java.util.regex.Pattern;
+import no.vtvest.booking.common.ApiException;
 import no.vtvest.booking.security.PasswordPolicy;
+import no.vtvest.booking.user.AccountService;
 
 /** The interactive dialogue of bootstrap-admin. Returns the process exit code. */
 class BootstrapAdminCommand {
@@ -12,7 +13,6 @@ class BootstrapAdminCommand {
     static final int REFUSED = 1;
     static final int USAGE = 2;
 
-    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final int ATTEMPTS = 3;
 
     private final Terminal terminal;
@@ -31,16 +31,14 @@ class BootstrapAdminCommand {
         terminal.println("Oppretter den første systemadministratoren.");
 
         String email = ask("E-post: ", value -> {
-            if (value.length() > 254 || !EMAIL.matcher(value).matches()) return "Ugyldig e-postadresse.";
+            String invalid = problem(() -> AccountService.normalizeEmail(value));
+            if (invalid != null) return invalid;
             if (service.emailInUse(value)) return "Det finnes allerede en bruker med denne e-postadressen.";
             return null;
         });
         if (email == null) return USAGE;
 
-        String name = ask("Navn: ", value -> value.isEmpty() || value.length() > 120
-                        || value.chars().anyMatch(Character::isISOControl)
-                ? "Navnet må ha 1 til 120 tegn."
-                : null);
+        String name = ask("Navn: ", value -> problem(() -> AccountService.requireName(value)));
         if (name == null) return USAGE;
 
         String password = askPassword();
@@ -53,6 +51,16 @@ class BootstrapAdminCommand {
         } catch (BootstrapRefusedException e) {
             terminal.println("Avbrutt: " + e.getMessage());
             return REFUSED;
+        }
+    }
+
+    /** The message of the account rule {@code check} breaks, or null. The rules are the same as for accounts created over HTTP. */
+    private static String problem(Runnable check) {
+        try {
+            check.run();
+            return null;
+        } catch (ApiException e) {
+            return e.getMessage();
         }
     }
 

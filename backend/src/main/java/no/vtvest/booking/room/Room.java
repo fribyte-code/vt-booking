@@ -8,6 +8,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.util.UUID;
 
+/**
+ * Written with JdbcTemplate by AdminService; JPA only reads it. Not {@code @Immutable}: booking writes
+ * lock this row through JPA, and Hibernate refuses locks on read-only entities.
+ */
 @Entity
 @Table(name = "rooms")
 public class Room {
