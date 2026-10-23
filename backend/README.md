@@ -40,7 +40,7 @@ docker compose up -d --wait                 # PostgreSQL 18 on 127.0.0.1:5432
 
 ### Docker image
 
-`Dockerfile` is a multi-stage build: Maven builds the jar, and the runtime image runs it as a non-root user. The image sets no Spring profile. There is no production Compose setup yet; see `../docs/DEPLOYMENT.md`.
+`Dockerfile` is a multi-stage build: Maven builds the jar, and the runtime image runs it as a non-root user. The image sets no Spring profile. Production runs it with `../compose.prod.yaml`; see `../docs/DEPLOYMENT.md`.
 
 ## First administrator and logging in
 
@@ -167,7 +167,6 @@ They cover:
 
 ## Not implemented yet
 
-- production deployment: HTTPS, healthcheck, backups (`../docs/DEPLOYMENT.md`)
 - audit log
 - email notifications
 - persistent sessions (sessions and the login throttle are in memory, so run one instance)

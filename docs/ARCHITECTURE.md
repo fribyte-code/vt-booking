@@ -37,12 +37,13 @@ Conventions:
 ## 3. Authentication and accounts
 
 - **Login:** email and password, form login at `POST /api/auth/login`, with a server-side session cookie (HttpOnly, SameSite=Lax, Secure outside the `dev` profile). The session ID changes at login. Logout is `POST /api/auth/logout`.
-- **CSRF:** `csrf.spa()`. The server sets an `XSRF-TOKEN` cookie, and the SPA echoes it in `X-XSRF-TOKEN` on every state-changing request, including login.
+- **CSRF:** `csrf.spa()`. The server sets an `XSRF-TOKEN` cookie (with the same `Secure` flag as the session cookie, also when the API only sees plain HTTP behind the reverse proxy), and the SPA echoes it in `X-XSRF-TOKEN` on every state-changing request, including login.
 - **Session principal:** the user's ID, never the email. `CurrentUser` reloads the user from the database on every request, so a role change or a disabled account takes effect on the next request.
 - **Password changes end other sessions.** Sessions that logged in before `users.password_changed_at` are rejected. Changing your own password keeps the current session; an administrator's reset ends all of them.
 - **Forced password change:** accounts created or reset by an administrator get a server-generated temporary password (shown once) and `must_change_password`. Until it is changed, every endpoint except `/api/me` and `/api/me/password` answers `PASSWORD_CHANGE_REQUIRED`.
 - **Passwords:** Argon2id through `DelegatingPasswordEncoder`, 8–128 characters counted as code points, no composition rules or blocklist.
 - **Brute force:** `LoginThrottle` answers 429 after 5 failed logins per email or 30 per IP address within 15 minutes. Every failed login gets the same bodiless 401.
+- **Client address:** Nginx decides it and sends it as a single `X-Forwarded-For` value, dropping anything the client sent. It is the TCP peer, or, only for requests from the reverse proxy named in `TRUSTED_PROXY` (`compose.prod.yaml`, via `frontend/real-ip.conf.template`), the address in that proxy's header. Tomcat accepts the header only from private-network peers, so the API port must never be published. `ProxyClientAddressIntegrationTest` runs the real Nginx config in front of the API.
 - **Session lifetime:** 8 hours idle. Sessions and the throttle are kept in memory, so the API runs as a single instance and a restart logs everyone out.
 - **First administrator:** `java -jar app.jar bootstrap-admin` (or `make bootstrap-admin`). It prompts in the terminal, starts without a web server, and refuses once any SYSTEM_ADMIN exists. There is no HTTP endpoint for it, no development login and no seed data.
 - **Everyone else** is created by an administrator: a SYSTEM_ADMIN (`POST /api/admin/users`), or an ORG_ADMIN adding a new email to their organization. Adding an existing account as an ORG_ADMIN creates an in-app invitation that the user accepts or declines.
@@ -103,8 +104,8 @@ Integrity in the schema:
 
 - **Backend:** integration tests against PostgreSQL in Testcontainers (`./mvnw test`, needs Docker). `test-fixtures.sql` replaces all data before every test. They cover login, CSRF and sessions, authorization per role, every booking rule, series, deactivation, invitations, bootstrap, and concurrency (parallel bookings and approvals leave exactly one approved).
 - **Frontend:** Vitest tests for the rules, both data sources and the API client (`npm test`).
-- **End to end:** `make e2e` runs the booking workflow through the real API against a running app. It currently creates its fixtures directly in the development database with psql.
+- **End to end:** `make e2e` runs the booking workflow through the real API against a running local app, logged in as an existing SYSTEM_ADMIN (`E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`). It creates its organizations, rooms and users through the admin API, and disables and archives them afterwards; it never connects to the database. It refuses a non-loopback base URL, and an API whose session cookie is `Secure` (anything but the `dev` profile).
 
 ## 10. Deployment
 
-Only a local setup exists: `make up` runs PostgreSQL, the API (with the `dev` profile) and Nginx in Docker on `http://localhost:8088`. It is not a production setup. The plan for production (HTTPS, healthchecks, backups, secrets) is in `DEPLOYMENT.md`.
+Locally, `make up` runs PostgreSQL, the API (with the `dev` profile) and Nginx in Docker on `http://localhost:8088`; it is not a production setup. Production uses `compose.prod.yaml` and the `make prod-*` commands behind the host's HTTPS reverse proxy; see `DEPLOYMENT.md`.

@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import no.vtvest.booking.user.UserRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,6 +22,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.authentication.logout.HttpStatusReturningLogoutSuccessHandler;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -41,14 +43,18 @@ class SecurityConfig {
     private static final String LOGIN_URL = "/api/auth/login";
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, UserRepository users, LoginThrottle throttle, Clock clock)
-            throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, UserRepository users, LoginThrottle throttle, Clock clock,
+            @Value("${server.servlet.session.cookie.secure}") boolean secureCookies) throws Exception {
+        // The XSRF-TOKEN cookie gets the same Secure flag as the session cookie. Left to itself it
+        // follows the request's scheme, which is plain HTTP behind an HTTPS reverse proxy.
+        CookieCsrfTokenRepository csrfCookies = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        csrfCookies.setCookieCustomizer(cookie -> cookie.secure(secureCookies));
         http
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
-                .csrf(csrf -> csrf.spa())
+                .csrf(csrf -> csrf.spa().csrfTokenRepository(csrfCookies))
                 .addFilterBefore(new ThrottleFilter(throttle), UsernamePasswordAuthenticationFilter.class)
                 .formLogin(form -> form
                         .loginProcessingUrl(LOGIN_URL)

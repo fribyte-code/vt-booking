@@ -13,7 +13,7 @@ Krever Docker. `make dev`, `make demo` og `make test` trenger i tillegg Java 21 
 | `make dev` | PostgreSQL i Docker, Spring Boot og React (API-modus) lokalt med hot reload. Åpne http://localhost:5173. Demoen som «Prøv demo» lenker til kjører på http://localhost:5174/demo/. |
 | `make demo` | Frittstående demo med testdata i nettleseren, uten backend. Åpne http://localhost:5173. |
 | `make test` | Frontend- og backendtester |
-| `make e2e` | Ende-til-ende-test av bookingflyten mot en app som kjører (`make dev`, eller `make up` med `E2E_BASE_URL=http://localhost:8088`) |
+| `make e2e` | Ende-til-ende-test av bookingflyten mot en lokal app som kjører (`make dev`, eller `make up` med `E2E_BASE_URL=http://localhost:8088`). Krever `E2E_ADMIN_EMAIL` og `E2E_ADMIN_PASSWORD` for en systemadministrator i den lokale databasen. Testdataene lages og arkiveres gjennom admin-API-et. |
 | `make up` | Hele løsningen i Docker (PostgreSQL, Spring Boot, Nginx). Åpne http://localhost:8088. Demoen ligger på http://localhost:8088/demo/. |
 | `make down` | Stopper containerne. Dataene beholdes. |
 | `make bootstrap-admin` | Oppretter den første systemadministratoren (interaktivt) |
@@ -23,7 +23,7 @@ Databasen starter tom: det finnes ingen testbrukere, delte passord eller eksempe
 
 - «Prøv demo» på innloggingssiden åpner den frittstående demoen. Demoen er et eget bygg med testdata i nettleseren, og den kontakter aldri backend eller databasen.
 - `make dev` stopper backend, frontend og demo med Ctrl+C. Backend starter på nytt automatisk når Java-koden kompileres på nytt, for eksempel fra IDE-en eller med `./mvnw compile`.
-- `make up` kjører backend med Spring-profilen `dev` (standard databasepassord og informasjonskapsler uten HTTPS). Oppsettet er bare for lokal testing, ikke for produksjon. Planen for produksjon står i `docs/DEPLOYMENT.md`.
+- `make up` kjører backend med Spring-profilen `dev` (standard databasepassord og informasjonskapsler uten HTTPS). Oppsettet er bare for lokal testing, ikke for produksjon. Produksjon kjøres med `compose.prod.yaml` og `make prod-*`; se `docs/DEPLOYMENT.md`.
 - Produksjonsbygget av frontend inneholder aldri demodata eller brukerbytte. Det lokale oppsettet bygger frontend med `WITH_DEMO=true` for å vise demoen ved siden av.
 - Bytt port for `make up` med `make up APP_PORT=9000`.
 

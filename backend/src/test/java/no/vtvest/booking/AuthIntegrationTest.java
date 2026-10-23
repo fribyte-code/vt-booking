@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -146,6 +147,15 @@ class AuthIntegrationTest extends IntegrationTest {
         jdbc.update("UPDATE users SET password_hash = ? WHERE id = ?", hash, KARI_ID);
         loggedIn(KARI_EMAIL, "et-langt-passord-42");
         login(null, KARI_EMAIL, PASSWORD).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void theCsrfCookieIsSecureLikeTheSessionCookieEvenOverPlainHttp() throws Exception {
+        // Behind an HTTPS reverse proxy the API itself only sees plain HTTP, as this request does.
+        mvc.perform(get("/api/auth/csrf"))
+                .andExpect(status().isNoContent())
+                .andExpect(cookie().secure("XSRF-TOKEN", true))
+                .andExpect(cookie().httpOnly("XSRF-TOKEN", false));
     }
 
     @Test

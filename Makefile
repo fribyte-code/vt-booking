@@ -4,14 +4,15 @@
 FRONTEND := frontend
 BACKEND  := backend
 COMPOSE  := docker compose
+PROD     := docker compose -f compose.prod.yaml
 E2E_BASE_URL ?= http://localhost:5173
 APP_PORT ?= 8088
 export APP_PORT
 
-.PHONY: help dev demo test e2e up down reset-db bootstrap-admin
+.PHONY: help dev demo test e2e up down reset-db bootstrap-admin prod-up prod-down prod-logs prod-update prod-bootstrap-admin
 
 help: ## Show this list
-	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-16s %s\n", $$1, $$2}'
+	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-22s %s\n", $$1, $$2}'
 
 $(FRONTEND)/node_modules: $(FRONTEND)/package-lock.json
 	cd $(FRONTEND) && npm ci
@@ -35,7 +36,9 @@ test: $(FRONTEND)/node_modules ## Frontend and backend tests (backend needs Dock
 	cd $(FRONTEND) && npm test
 	cd $(BACKEND) && ./mvnw -q test
 
-e2e: $(FRONTEND)/node_modules ## End-to-end workflow against a running app (make dev, or make up with E2E_BASE_URL=http://localhost:8088); creates and deletes its own test data
+e2e: $(FRONTEND)/node_modules ## End-to-end workflow against the local app (make dev, or make up with E2E_BASE_URL=http://localhost:8088), as E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD; creates and archives its own test data through the admin API
+	@test -n "$$E2E_ADMIN_EMAIL" -a -n "$$E2E_ADMIN_PASSWORD" || \
+	  { echo "Set E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD to a system administrator of the local database ('make bootstrap-admin' creates one)."; exit 1; }
 	@curl -sf -o /dev/null $(E2E_BASE_URL)/api/auth/csrf || \
 	  { echo "No API at $(E2E_BASE_URL). Start it with 'make dev' or 'make up' first."; exit 1; }
 	cd $(FRONTEND) && E2E_BASE_URL=$(E2E_BASE_URL) npx vitest run apiWorkflow
@@ -56,3 +59,20 @@ reset-db: ## Delete the development database (asks first)
 	    [yY]*) $(COMPOSE) down -v && echo "Database deleted. It is recreated empty on the next 'make dev' or 'make up'; then run 'make bootstrap-admin'." ;; \
 	    *) echo "Cancelled." ;; \
 	  esac
+
+# ── Production: compose.prod.yaml with settings in .env (see docs/DEPLOYMENT.md) ──
+
+prod-up: ## Production: start in the background (builds the images the first time)
+	$(PROD) up -d --wait
+
+prod-down: ## Production: stop the containers (the database is kept)
+	$(PROD) down
+
+prod-logs: ## Production: follow the logs of all services
+	$(PROD) logs -f --tail=100
+
+prod-update: ## Production: rebuild the images from this checkout and restart (back up first)
+	$(PROD) up -d --build --wait
+
+prod-bootstrap-admin: ## Production: create the first system administrator (interactive)
+	$(PROD) run --rm backend bootstrap-admin

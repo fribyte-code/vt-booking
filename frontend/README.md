@@ -48,10 +48,10 @@ From the repository root, `make dev` does all of the steps below in one command,
 
 3. The database starts empty. The first time, create a system administrator from the repository root with `make bootstrap-admin` (it asks for email, name and password), and log in with it. Create organizations, rooms and other users under **Administrasjon**; new users get a temporary password that they must change at first login.
 
-To run the end-to-end workflow test against the running backend (login, direct booking, double-booking refusal, request, approval, rejection, cancellation and logout). It creates its own users, organizations and rooms directly in the local development database with `psql` and deletes them afterwards:
+To run the end-to-end workflow test against the running local backend (login, forced password change, direct booking, double-booking refusal, request, approval, rejection, cancellation and logout), log in as a system administrator of the local database (`make bootstrap-admin` creates one). The test creates its own organizations, rooms and users through the admin API with random names, and afterwards disables the users and archives the rest; it never connects to the database. It refuses a base URL that isn't `localhost`, `127.0.0.1` or `[::1]`, and an API with a `Secure` session cookie (anything but the `dev` profile). Archived test data stays in the development database until `make reset-db`.
 
 ```bash
-E2E_BASE_URL=http://localhost:5173 npx vitest run apiWorkflow
+E2E_BASE_URL=http://localhost:5173 E2E_ADMIN_EMAIL=you@example.no E2E_ADMIN_PASSWORD=... npx vitest run apiWorkflow
 ```
 
 `npm test` skips it when `E2E_BASE_URL` isn't set.

@@ -1,63 +1,104 @@
-# Deployment plan
+# Running in production
 
-**Status: not implemented.** Only the local setup exists (`compose.yaml`, `make up`), and it runs the backend with the `dev` profile (default database password, cookies without `Secure`). This document is the plan for production. It replaces section 9 of `archive/ARCHITECTURE.md`, without the parts that no longer apply (Google login, SMTP, Mailpit).
+How to run the booking system on a server with Docker Compose, behind your own HTTPS reverse proxy. Everything is built from this repository; there are no prebuilt images.
 
-Requirements from the spec: self-hosted on Velferdstinget's own servers, Docker Compose, Nginx, no external cloud services at runtime.
+`compose.prod.yaml` runs three containers:
 
-## What exists today
+| Service | What | Reachable from |
+|---|---|---|
+| `frontend` | Nginx: the built React app, and `/api/` passed on to the backend | The host, on `HTTP_BIND:HTTP_PORT` (default `127.0.0.1:8080`). Your reverse proxy points here. |
+| `backend` | The Spring Boot API | Only `frontend` |
+| `db` | PostgreSQL 18, data in the Docker volume `vt-booking-prod_pgdata` | Only `backend` |
 
-| Piece | State |
+All three restart automatically (`unless-stopped`) and have healthchecks. The demo and the development settings are not included.
+
+## Requirements
+
+- Docker with Compose v2, `make` and `git`. About 2 GB of RAM is enough.
+- An HTTPS reverse proxy in front. **HTTPS is required:** the session cookie is `Secure`, so logging in over plain HTTP doesn't work.
+
+## Reverse proxy
+
+Point the proxy at `http://HTTP_BIND:HTTP_PORT` and have it:
+
+- pass the original `Host` header,
+- send the client's address in `X-Forwarded-For` (appended, as most proxies do) or `X-Real-IP`.
+
+Then tell Nginx which proxy to trust, in `.env`:
+
+- `TRUSTED_PROXY`: the proxy's address **as Nginx sees it**, or a CIDR range. Only requests from there may set the client address.
+- `REAL_IP_HEADER`: `X-Forwarded-For` or `X-Real-IP`.
+
+To find the address, start the system, open the site through the proxy, and look at the first field of the `frontend` lines in `make prod-logs`. If the proxy runs on the same host, it is usually the Docker network's gateway (for example `172.27.0.1`). Set `TRUSTED_PROXY` to it, run `make prod-up`, and check that the logs now show the real client addresses. If Docker's networks are recreated with other addresses later, check again.
+
+This matters for security: the login is limited to 30 failed attempts per address in 15 minutes. With the default (`127.0.0.1`, trust nothing), every user has the proxy's address, so a few people mistyping their password could block everyone's login for 15 minutes. Never trust a wider range than the proxy itself: whoever is trusted can choose their address.
+
+## First start
+
+```bash
+git clone <this repository> vt-booking && cd vt-booking
+cp .env.example .env && chmod 600 .env
+# Edit .env: DB_PASSWORD (for example `openssl rand -hex 32`), HTTP_BIND/HTTP_PORT, TRUSTED_PROXY/REAL_IP_HEADER
+make prod-up                  # builds the images (a few minutes) and starts; waits until healthy
+make prod-bootstrap-admin     # interactive: email, name and password of the first administrator
+```
+
+`prod-bootstrap-admin` only works once: it refuses as soon as any system administrator exists. Further users are created in the app, under **Administrasjon**.
+
+## Everyday commands
+
+| Command | |
 |---|---|
-| `backend/Dockerfile` | Multi-stage build, runs as a non-root user, sets no Spring profile |
-| `frontend/Dockerfile` and `nginx.conf` | Production build (always API mode), security headers and CSP, `/api/` proxied to `backend:8080`. `WITH_DEMO=true` also serves the demo at `/demo/` (local only). |
-| `compose.yaml` | Local stack: PostgreSQL, backend with `SPRING_PROFILES_ACTIVE=dev`, Nginx on `127.0.0.1:8088` |
-| First administrator | `docker compose run --rm backend bootstrap-admin` (interactive) |
+| `make prod-up` | Start (or apply changes in `.env`) |
+| `make prod-down` | Stop. The database is kept. |
+| `make prod-logs` | Follow the logs |
+| `docker compose -f compose.prod.yaml ps` | Status and health |
 
-## Production setup to build
+Restarting the backend logs everyone out: sessions are kept in memory. Run only one instance of each service.
 
-### Containers
+## Updating
 
-| Service | Notes |
-|---|---|
-| `web` | The frontend image without the demo (`WITH_DEMO=false`). TLS with Let's Encrypt (certbot, webroot challenge) or the host's certificate. If the host already has a TLS reverse proxy, `web` serves plain HTTP on the internal network only. |
-| `api` | The backend image with **no** `dev` profile, so session cookies are `Secure`. No published port. |
-| `db` | `postgres:18` (pinned), on an internal network, no published port, volume `pgdata` |
-| `backup` | A small image with `pg_dump` (and `restic` for off-site copies), run nightly |
+```bash
+# 1. Back up (below)
+git pull
+make prod-update              # rebuilds the images from this checkout and restarts
+```
 
-- **Startup order:** `depends_on` with `condition: service_healthy` (`db` before `api` before `web`). The API needs a healthcheck first; it has no health endpoint today (Spring Boot Actuator, or a check on `/api/auth/csrf`).
-- **HSTS** belongs in `nginx.conf` once HTTPS is in place.
-- **Client IP for the login throttle.** Nginx currently appends to the client's `X-Forwarded-For` (`$proxy_add_x_forwarded_for`), and Tomcat trusts every private-network address as a proxy. At the outermost proxy, set the header from `$remote_addr` instead, so clients can't add addresses of their own.
+Database migrations run automatically when the backend starts. To roll back: check out the previous version, restore the backup taken in step 1 (the new version may have changed the database), and run `make prod-update`.
 
-### Configuration and secrets
+## Backup
 
-- Set `DB_URL` (default `jdbc:postgresql://localhost:5432/booking`), `DB_USER` (default `booking`) and `DB_PASSWORD`. Without the `dev` profile, the password defaults to empty, so it must be set.
-- Keep secrets out of the repository: an `.env` file with mode `0600` on the server, or Compose `secrets:` read with `spring.config.import=configtree:/run/secrets/`.
-- Optional later: a separate database role for Flyway (owner) and a DML-only role for the application.
+There is no built-in backup job. Back up the database with `pg_dump`, for example nightly from cron, and copy the files to another machine:
 
-### Backups and restore
+```bash
+docker compose -f compose.prod.yaml exec -T db pg_dump -U booking -Fc booking > vt-booking-$(date +%F).dump
+```
 
-| Item | Proposal (confirm with Velferdstinget, see `OPEN_QUESTIONS.md`) |
-|---|---|
-| Method | Nightly `pg_dump -Fc`, plus a dump before every deploy |
-| Storage | Encrypted, on a different machine or site |
-| Retention | 7 daily, 4 weekly, 12 monthly |
-| Data loss / restore time | At most 24 hours / about 4 hours |
-| Restore test | Quarterly, into a separate database, with a smoke test |
+Run it from the repository directory. The dump contains all data, including password hashes, so store it securely.
 
-### Logging and monitoring
+## Restore
 
-- The API and Nginx log to stdout; use Docker's `json-file` driver with `max-size` and `max-file` rotation.
-- Healthchecks on `db` (`pg_isready`), `api` and `web`.
-- Simple uptime monitoring (for example Uptime Kuma, or the host's monitoring): the public URL, certificate expiry, backup freshness and disk space.
+```bash
+docker compose -f compose.prod.yaml stop backend
+docker compose -f compose.prod.yaml exec -T db pg_restore -U booking -d booking --clean --if-exists < vt-booking-2026-01-31.dump
+docker compose -f compose.prod.yaml start backend
+```
 
-### Deploying and rolling back
+This replaces the current data with the dump. Test a restore once before going live.
 
-1. Build versioned images (a version tag and the git SHA).
-2. Deploy: take a backup, `docker compose pull`, `docker compose up -d`, then check the login page.
-3. Roll back by setting the previous tag and running `up -d`. Migrations must stay backward compatible (expand, then contract in a later release), so the previous version runs on the new schema. If data is damaged, restore the pre-deploy dump.
-4. Create the first administrator once with `bootstrap-admin`.
+## Configuration (`.env`)
 
-### Limits to keep in mind
+| Variable | Default | |
+|---|---|---|
+| `DB_PASSWORD` | none, required | Set before the first start: PostgreSQL stores it when it creates the database. To change it later, change it in PostgreSQL too (`ALTER USER booking PASSWORD '…'`). |
+| `HTTP_BIND` | `127.0.0.1` | `0.0.0.0` (or an address) if the proxy is on another machine |
+| `HTTP_PORT` | `8080` | |
+| `TRUSTED_PROXY` | `127.0.0.1` (trust nothing) | See "Reverse proxy" |
+| `REAL_IP_HEADER` | `X-Forwarded-For` | |
 
-- Sessions and the login throttle live in memory: run **one** API instance, and expect a restart to log everyone out.
-- Everything fits comfortably on about 2 vCPU, 4 GB RAM and 40 GB disk.
+## Don'ts
+
+- Don't publish the `backend` or `db` ports. The backend trusts the client address that Nginx sends, so it must only be reachable through Nginx.
+- Don't set `SPRING_PROFILES_ACTIVE`. The `dev` profile turns off `Secure` cookies and has a default database password.
+- Don't use the development commands on the server (`make dev`, `make up`, `make reset-db`, `make e2e`) or `compose.yaml`. They are for local development; `make reset-db` deletes data.
+- Don't run `docker compose -f compose.prod.yaml down -v`: `-v` deletes the database volume.
