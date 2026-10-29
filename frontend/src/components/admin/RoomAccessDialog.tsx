@@ -7,6 +7,7 @@ import { type AdminOrganization, type AdminRoom, adminApi } from '../../services
 import type { Permission } from '../../types'
 import { RoomDot } from '../booking/badges'
 import { Button } from '../ui/Button'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { Alert, Field, Input, Select } from '../ui/fields'
 import { Modal } from '../ui/Modal'
 
@@ -25,11 +26,14 @@ export function RoomAccessDialog({
   organizations,
   onClose,
   onSaved,
+  onPartiallySaved,
 }: {
   room: AdminRoom
   organizations: AdminOrganization[]
   onClose: () => void
   onSaved: () => void
+  /** Some changes were saved before one failed; the dialog stays open. */
+  onPartiallySaved: () => void
 }) {
   const id = useId()
   const initial = (orgId: string): Choice => room.access.find((a) => a.organizationId === orgId)?.permission ?? null
@@ -38,6 +42,7 @@ export function RoomAccessDialog({
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
 
   const changedOrgs = organizations.filter((o) => choices[o.id] !== initial(o.id))
   const defaultChanged = defaultPermission !== room.defaultPermission
@@ -45,18 +50,36 @@ export function RoomAccessDialog({
   const visible = organizations.filter((o) => o.name.toLowerCase().includes(query.trim().toLowerCase()))
   const setAll = (choice: Choice) => setChoices(Object.fromEntries(organizations.map((o) => [o.id, choice])))
 
+  const close = () => (changeCount > 0 ? setConfirmDiscard(true) : onClose())
+
   const save = async () => {
     setBusy(true)
     setError(null)
+    let saved = 0
     try {
-      if (defaultChanged) await adminApi.updateRoom(room.id, { ...room, defaultPermission })
-      for (const org of changedOrgs) await adminApi.setRoomAccess(room.id, org.id, choices[org.id])
+      if (defaultChanged) {
+        await adminApi.updateRoom(room.id, { ...room, defaultPermission })
+        saved++
+      }
+      for (const org of changedOrgs) {
+        await adminApi.setRoomAccess(room.id, org.id, choices[org.id])
+        saved++
+      }
       onSaved()
     } catch (err) {
       // Changes saved before the failure stay saved; every request sets an absolute value, so saving again is safe.
-      setError(errorMessage(err))
+      setError(saved > 0 ? `${saved} av ${changeCount} endringer ble lagret. ${errorMessage(err)}` : errorMessage(err))
       setBusy(false)
+      if (saved > 0) onPartiallySaved()
     }
+  }
+
+  if (confirmDiscard) {
+    return (
+      <ConfirmDialog title="Forkaste endringene?" confirmLabel="Forkast" destructive onClose={() => setConfirmDiscard(false)} onConfirm={onClose}>
+        {changeCount === 1 ? 'Du har én endring som ikke er lagret.' : `Du har ${changeCount} endringer som ikke er lagret.`}
+      </ConfirmDialog>
+    )
   }
 
   return (
@@ -64,10 +87,10 @@ export function RoomAccessDialog({
       title={`Tilganger for ${room.name}`}
       leading={<RoomDot color={room.color} />}
       size="lg"
-      onClose={onClose}
+      onClose={close}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={close}>
             Avbryt
           </Button>
           <Button variant="primary" onClick={save} disabled={busy || changeCount === 0}>

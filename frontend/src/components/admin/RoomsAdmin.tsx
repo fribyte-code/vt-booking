@@ -81,6 +81,7 @@ export function RoomsAdmin() {
             setEditingAccess(null)
             changed()
           }}
+          onPartiallySaved={changed}
         />
       )}
       {editing && (
@@ -253,16 +254,19 @@ function RoomDialog({ room, rooms, onClose, onSaved }: { room: AdminRoom | null;
           onChange={(color) => set({ color })}
           usedBy={(color) => others.filter((r) => sameColor(r.color, color)).map((r) => r.name)}
         />
+        {/* For existing rooms the default permission is set under Tilganger, next to the organizations it applies to. */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Standardtilgang" htmlFor={`${id}-perm`} hint="Gjelder organisasjoner uten egen innstilling.">
-            <Select id={`${id}-perm`} value={fields.defaultPermission} onChange={(e) => set({ defaultPermission: e.target.value as Permission })}>
-              {PERMISSIONS.map((p) => (
-                <option key={p} value={p}>
-                  {permissionLabels[p]}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {!room && (
+            <Field label="Standardtilgang" htmlFor={`${id}-perm`} hint="Gjelder organisasjoner uten egen innstilling. Endres senere under Tilganger.">
+              <Select id={`${id}-perm`} value={fields.defaultPermission} onChange={(e) => set({ defaultPermission: e.target.value as Permission })}>
+                {PERMISSIONS.map((p) => (
+                  <option key={p} value={p}>
+                    {permissionLabels[p]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           {room && (
             <Field
               label="Status"
