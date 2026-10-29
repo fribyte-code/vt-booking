@@ -1,4 +1,4 @@
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useId, useState } from 'react'
 import { useApp } from '../../hooks/useApp'
 import { sameColor, suggestColor } from '../../lib/color'
@@ -6,7 +6,7 @@ import { errorMessage } from '../../lib/errors'
 import { permissionLabels } from '../../services/bookingRules'
 import { type AdminOrganization, type AdminRoom, adminApi, type RoomFields, type RoomStatus, roomStatusLabels } from '../../services/adminApi'
 import type { Permission } from '../../types'
-import { RoomDot } from '../booking/badges'
+import { PermissionBadge, RoomDot } from '../booking/badges'
 import { Button } from '../ui/Button'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { Alert, Field, Input, Select, Textarea } from '../ui/fields'
@@ -14,6 +14,7 @@ import { Modal } from '../ui/Modal'
 import { Chip } from './Chip'
 import { ColorPicker } from './ColorPicker'
 import { FutureBookingsDialog } from './FutureBookingsDialog'
+import { RoomAccessDialog } from './RoomAccessDialog'
 import { useAdminData } from './useAdminData'
 
 const PERMISSIONS: Permission[] = ['DIRECT', 'REQUEST', 'NONE']
@@ -24,7 +25,7 @@ export function RoomsAdmin() {
   const load = useCallback(() => Promise.all([adminApi.rooms(), adminApi.organizations()]), [])
   const { data, error, reload } = useAdminData(load)
   const [editing, setEditing] = useState<AdminRoom | 'new' | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
+  const [editingAccess, setEditingAccess] = useState<AdminRoom | null>(null)
 
   if (error) return <Alert tone="error">{error}</Alert>
   if (!data) return <p className="text-sm text-slate-500">Laster rom …</p>
@@ -35,16 +36,6 @@ export function RoomsAdmin() {
     app.reload()
   }
 
-  const setAccess = async (room: AdminRoom, org: AdminOrganization, value: string) => {
-    setActionError(null)
-    try {
-      await adminApi.setRoomAccess(room.id, org.id, value === 'DEFAULT' ? null : (value as Permission))
-      changed()
-    } catch (err) {
-      setActionError(errorMessage(err))
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
@@ -52,7 +43,6 @@ export function RoomsAdmin() {
           <Plus className="size-4" /> Nytt rom
         </Button>
       </div>
-      {actionError && <Alert tone="error">{actionError}</Alert>}
 
       {rooms.length === 0 && <p className="text-sm text-slate-500">Ingen rom ennå. Opprett det første rommet.</p>}
 
@@ -71,38 +61,28 @@ export function RoomsAdmin() {
                   .join(' · ')}
               </p>
             </div>
+            <Button size="sm" onClick={() => setEditingAccess(room)} aria-label={`Tilganger for ${room.name}`}>
+              <KeyRound className="size-4" /> Tilganger
+            </Button>
             <Button size="sm" onClick={() => setEditing(room)} aria-label={`Rediger ${room.name}`}>
               <Pencil className="size-4" /> Rediger
             </Button>
           </div>
-          {organizations.length > 0 && (
-            <div className="grid gap-x-6 gap-y-2 px-4 py-3 sm:grid-cols-2">
-              {organizations.map((org) => {
-                const override = room.access.find((a) => a.organizationId === org.id)?.permission
-                return (
-                  <label key={org.id} className="flex items-center gap-2 text-sm">
-                    <span className="flex-1 truncate text-slate-700">{org.name}</span>
-                    <Select
-                      className="h-8! w-48! shrink-0"
-                      aria-label={`Tilgang for ${org.name} til ${room.name}`}
-                      value={override ?? 'DEFAULT'}
-                      onChange={(e) => setAccess(room, org, e.target.value)}
-                    >
-                      <option value="DEFAULT">Standard ({permissionLabels[room.defaultPermission]})</option>
-                      {PERMISSIONS.map((p) => (
-                        <option key={p} value={p}>
-                          {permissionLabels[p]}
-                        </option>
-                      ))}
-                    </Select>
-                  </label>
-                )
-              })}
-            </div>
-          )}
+          <AccessSummary room={room} organizations={organizations} onOpen={() => setEditingAccess(room)} />
         </section>
       ))}
 
+      {editingAccess && (
+        <RoomAccessDialog
+          room={editingAccess}
+          organizations={organizations}
+          onClose={() => setEditingAccess(null)}
+          onSaved={() => {
+            setEditingAccess(null)
+            changed()
+          }}
+        />
+      )}
       {editing && (
         <RoomDialog
           room={editing === 'new' ? null : editing}
@@ -115,6 +95,28 @@ export function RoomsAdmin() {
         />
       )}
     </div>
+  )
+}
+
+/** The organizations grouped by their effective permission for the room. */
+function AccessSummary({ room, organizations, onOpen }: { room: AdminRoom; organizations: AdminOrganization[]; onOpen: () => void }) {
+  if (organizations.length === 0) return null
+  const effective = (org: AdminOrganization) => room.access.find((a) => a.organizationId === org.id)?.permission ?? room.defaultPermission
+  return (
+    <button type="button" onClick={onOpen} className="block w-full space-y-1.5 px-4 py-3 text-left hover:bg-slate-50">
+      {PERMISSIONS.map((p) => {
+        const orgs = organizations.filter((o) => effective(o) === p)
+        if (orgs.length === 0) return null
+        return (
+          <div key={p} className="flex items-baseline gap-2 text-sm">
+            <span className="w-20 shrink-0">
+              <PermissionBadge permission={p} short />
+            </span>
+            <span className="min-w-0 text-slate-700">{orgs.map((o) => o.name).join(', ')}</span>
+          </div>
+        )
+      })}
+    </button>
   )
 }
 
