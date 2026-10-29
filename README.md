@@ -164,10 +164,13 @@ Systemet skal hostes på egne servere og bygges som en Single Page Application (
 - Automatisk oppdatere bookinger osv som kommer (trenger godkjenning?) x
 - iCal til kalender iphone typ x
 - Stillbart booking detaljer om tid og uker osv?
-- Kan ikke ha flerne rom med samme farge? eller kanskje? Endre default farge til en ikke tatt? men ikke tvinge til det?
+- Kan ikke ha flerne rom med samme farge? eller kanskje? Endre default farge til en ikke tatt? men ikke tvinge til det? x 
 - Rom og tilganger view litt bedre (Klikke inn og se alle tilganger for hver organisasjon og kan endre)
-- Tilganger osv ? brukere typ
 - Multitenant løsning? (flere organisasjoner med egne adminer og bookinger osv)
-- 
+- Arkiverte brukere / rom / organisasjoner i en egen tabell? ish? også mulighet for å slette helt?
+- Profilbilde skal kun være 1 bokstav dersom andre første bokstav ikke er bokstav. 
+- Legge til zoom in og ut knapper?
+
+
 
 
