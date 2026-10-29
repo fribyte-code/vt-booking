@@ -9,6 +9,7 @@ import type { Booking } from '../../types'
 import { Button } from '../ui/Button'
 import { Alert } from '../ui/fields'
 import { Modal } from '../ui/Modal'
+import { AddToCalendar } from './AddToCalendar'
 import { CancelBookingDialog } from './CancelBookingDialog'
 import { DecisionDialog } from './DecisionDialog'
 import { RoomDot, StatusBadge } from './badges'
@@ -170,6 +171,7 @@ export function BookingDetailsDialog({ bookingId }: { bookingId: string }) {
           </Row>
         )}
       </div>
+      <AddToCalendar booking={booking} />
       {booking.status === 'PENDING' &&
         (expired ? (
           <Alert tone="info" className="mt-3">

@@ -81,19 +81,24 @@ Use the user switcher at the top right to change who is "logged in":
 
 | User | Organization(s) | Notes |
 |---|---|---|
-| Kari Nordmann | Organisasjon A | Default user |
-| Ola Hansen | Organisasjon B | |
-| Ingrid Berg | Organisasjon C | |
-| Jonas Lie | Organisasjon A and C | Picks which organization to book for |
+| Kari Nordmann | BLAK | Default user |
+| Ola Hansen | MAR | |
+| Ingrid Berg | Sirenene | |
+| Jonas Lie | BLAK and Immaturus | Picks which organization to book for |
+| Maria Solberg | Larmonien | |
+| Henrik Moe | Larmonien and MAR | |
+| Emil Haugen | Immaturus | |
+| Sofie Dahl | Kulturstyret i Bergen | |
 | Silje Aas | – | Administrator |
 
-Booking permissions:
+The rooms and organizations are based on Studentvillaen's room overview ([kulturstyret.no/romoversikt](https://kulturstyret.no/romoversikt/)). Booking permissions (empty means NONE):
 
-| Organization | Møterom A | Møterom B | Storsalen |
-|---|---|---|---|
-| Organisasjon A | DIRECT | REQUEST | REQUEST |
-| Organisasjon B | DIRECT | NONE | REQUEST |
-| Organisasjon C | NONE | DIRECT | REQUEST |
+| Organization | Marken, Skansen, Nøstet | Engen | Festplassen, Torgallmenningen | Korrommet | Gamle UiB-kantinen | Blackbox |
+|---|---|---|---|---|---|---|
+| Kulturstyret i Bergen | DIRECT | REQUEST | REQUEST | REQUEST | | REQUEST |
+| BLAK, MAR, Sirenene | DIRECT | | REQUEST | DIRECT | DIRECT | REQUEST |
+| Larmonien | DIRECT | | REQUEST | DIRECT | REQUEST | REQUEST |
+| Immaturus | DIRECT | | REQUEST | REQUEST | | DIRECT |
 
 The sample data is generated relative to today's date, so the current and following weeks always have activity. It includes several pending requests:
 
@@ -105,9 +110,9 @@ To get back to the initial state, use **"Tilbakestill demodata"** at the bottom 
 
 ### Suggested walkthrough
 
-1. As Kari, select a time in the week view and book Møterom A. The booking is confirmed immediately.
+1. As Kari, select a time in the week view and book Marken. The booking is confirmed immediately.
 2. Try booking the same time again. The form shows that the room is taken.
-3. Apply for Storsalen. The request shows up striped with a dashed border.
+3. Apply for Festplassen. The request shows up striped with a dashed border.
 4. Switch to Silje and approve the request under **Administrasjon**.
 5. Switch back to Kari. The booking is confirmed under **Mine bookinger**, and the bell shows a notification.
 6. Drag one of Kari's bookings to another time in the week view, or open it and choose **Endre**.
@@ -187,5 +192,5 @@ src/
 - The demo has no organization admins, invitations or management pages; it shows a read-only overview instead.
 - In API mode, the series list in the booking details comes from the server, but only occurrences in the loaded data can be opened from it.
 - Deactivation and invitation flows exist only in API mode.
-- No email notifications, ICS export or Google Calendar import.
+- No email notifications, calendar subscription feeds or Google Calendar import. "Legg til i kalender" in the booking details only copies a booking or series once: Google and Outlook get add-event links (Outlook can't repeat, Google only regular series), Apple Calendar gets the backend's `.ics` file (API mode only).
 - The main bundle is large (about 190 kB gzip), mostly because of FullCalendar. The management pages are loaded separately.

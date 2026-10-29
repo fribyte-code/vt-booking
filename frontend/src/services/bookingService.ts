@@ -44,7 +44,7 @@ export interface KeyValueStore {
   removeItem(key: string): void
 }
 
-const STORAGE_KEY = 'vt-booking:data:v1'
+const STORAGE_KEY = 'vt-booking:data:v2'
 
 function newId(prefix = 'bk'): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`

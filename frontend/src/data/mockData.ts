@@ -2,52 +2,140 @@ import { findConflicts } from '../services/bookingRules'
 import type { Booking, AppData, Organization, Room, User } from '../types'
 
 export const organizations: Organization[] = [
-  { id: 'org-a', name: 'Organisasjon A', description: 'Studentforening for samfunnsfag' },
-  { id: 'org-b', name: 'Organisasjon B', description: 'Linjeforening for økonomi' },
-  { id: 'org-c', name: 'Organisasjon C', description: 'Studentavis og kulturutvalg' },
+  { id: 'org-kulturstyret', name: 'Kulturstyret i Bergen', description: 'Forvalter Studentvillaen og støtter studentkulturen i Bergen.' },
+  { id: 'org-blak', name: 'Studentkoret Blandede Akademikere (BLAK)', description: 'Blandet studentkor.' },
+  { id: 'org-mar', name: 'Mannskoret Arme Riddere (MAR)', description: 'Mannskor for studenter.' },
+  { id: 'org-sirenene', name: 'Studinekoret Sirenene', description: 'Kor for studiner.' },
+  { id: 'org-larmonien', name: 'Musikselskabet Larmonien', description: 'Studentorkester.' },
+  { id: 'org-immaturus', name: 'Studentteateret Immaturus', description: 'Studentteater med fast scene i Blackbox.' },
 ]
 
 export const users: User[] = [
-  { id: 'user-kari', name: 'Kari Nordmann', email: 'kari@example.no', role: 'USER', organizationIds: ['org-a'] },
-  { id: 'user-ola', name: 'Ola Hansen', email: 'ola@example.no', role: 'USER', organizationIds: ['org-b'] },
-  { id: 'user-ingrid', name: 'Ingrid Berg', email: 'ingrid@example.no', role: 'USER', organizationIds: ['org-c'] },
+  { id: 'user-kari', name: 'Kari Nordmann', email: 'kari@example.no', role: 'USER', organizationIds: ['org-blak'] },
+  { id: 'user-ola', name: 'Ola Hansen', email: 'ola@example.no', role: 'USER', organizationIds: ['org-mar'] },
+  { id: 'user-ingrid', name: 'Ingrid Berg', email: 'ingrid@example.no', role: 'USER', organizationIds: ['org-sirenene'] },
   {
     id: 'user-jonas',
     name: 'Jonas Lie',
     email: 'jonas@example.no',
     role: 'USER',
-    organizationIds: ['org-a', 'org-c'],
+    organizationIds: ['org-blak', 'org-immaturus'],
   },
+  { id: 'user-maria', name: 'Maria Solberg', email: 'maria@example.no', role: 'USER', organizationIds: ['org-larmonien'] },
+  {
+    id: 'user-henrik',
+    name: 'Henrik Moe',
+    email: 'henrik@example.no',
+    role: 'USER',
+    organizationIds: ['org-larmonien', 'org-mar'],
+  },
+  { id: 'user-emil', name: 'Emil Haugen', email: 'emil@example.no', role: 'USER', organizationIds: ['org-immaturus'] },
+  { id: 'user-sofie', name: 'Sofie Dahl', email: 'sofie@example.no', role: 'USER', organizationIds: ['org-kulturstyret'] },
   { id: 'user-admin', name: 'Silje Aas', email: 'admin@example.no', role: 'ADMIN', organizationIds: [] },
 ]
 
+/** Rooms in Studentvillaen, after kulturstyret.no/romoversikt. */
 export const rooms: Room[] = [
   {
-    id: 'room-a',
-    name: 'Møterom A',
-    description: 'Lite møterom med skjerm og whiteboard.',
-    location: '2. etasje',
-    capacity: 8,
+    id: 'room-marken',
+    name: 'Marken',
+    description: 'Møterom med skjerm. Organisasjoner i Kulturstyret har første prioritet.',
+    location: 'Studentvillaen, 2. etasje',
+    capacity: 10,
     color: '#2563eb',
-    permissions: { 'org-a': 'DIRECT', 'org-b': 'DIRECT', 'org-c': 'NONE' },
+    permissions: {
+      'org-kulturstyret': 'DIRECT', 'org-blak': 'DIRECT', 'org-mar': 'DIRECT',
+      'org-sirenene': 'DIRECT', 'org-larmonien': 'DIRECT', 'org-immaturus': 'DIRECT',
+    },
   },
   {
-    id: 'room-b',
-    name: 'Møterom B',
-    description: 'Møterom med videokonferanseutstyr.',
-    location: '2. etasje',
-    capacity: 12,
+    id: 'room-skansen',
+    name: 'Skansen',
+    description: 'Lite møterom for opptil fire personer.',
+    location: 'Studentvillaen, 2. etasje',
+    capacity: 4,
+    color: '#0891b2',
+    permissions: {
+      'org-kulturstyret': 'DIRECT', 'org-blak': 'DIRECT', 'org-mar': 'DIRECT',
+      'org-sirenene': 'DIRECT', 'org-larmonien': 'DIRECT', 'org-immaturus': 'DIRECT',
+    },
+  },
+  {
+    id: 'room-nostet',
+    name: 'Nøstet',
+    description: 'Møterom med åtte stoler og ekstra stoler ved behov.',
+    location: 'Studentvillaen, 1. etasje',
+    capacity: 8,
     color: '#0f766e',
-    permissions: { 'org-a': 'REQUEST', 'org-b': 'NONE', 'org-c': 'DIRECT' },
+    permissions: {
+      'org-kulturstyret': 'DIRECT', 'org-blak': 'DIRECT', 'org-mar': 'DIRECT',
+      'org-sirenene': 'DIRECT', 'org-larmonien': 'DIRECT', 'org-immaturus': 'DIRECT',
+    },
   },
   {
-    id: 'room-c',
-    name: 'Storsalen',
-    description: 'Stor sal med scene, lydanlegg og projektor.',
-    location: '1. etasje',
-    capacity: 150,
+    id: 'room-engen',
+    name: 'Engen',
+    description: 'Møterom reservert for DAK. Andre kan bare booke etter avtale.',
+    location: 'Studentvillaen, 1. etasje',
+    capacity: 8,
+    color: '#65a30d',
+    permissions: { 'org-kulturstyret': 'REQUEST' },
+  },
+  {
+    id: 'room-festplassen',
+    name: 'Festplassen',
+    description: 'Fellesareal koblet til flere kontorer. Prioritert for Villa-organisasjoner, åpent utenom kontortid.',
+    location: 'Studentvillaen, 2. etasje',
+    capacity: 50,
     color: '#7c3aed',
-    permissions: { 'org-a': 'REQUEST', 'org-b': 'REQUEST', 'org-c': 'REQUEST' },
+    permissions: {
+      'org-kulturstyret': 'REQUEST', 'org-blak': 'REQUEST', 'org-mar': 'REQUEST',
+      'org-sirenene': 'REQUEST', 'org-larmonien': 'REQUEST', 'org-immaturus': 'REQUEST',
+    },
+  },
+  {
+    id: 'room-torgallmenningen',
+    name: 'Torgallmenningen',
+    description: 'Fellesareal som ofte lånes ut til arrangementer med eksterne deltakere uten nøkkelkort.',
+    location: 'Studentvillaen, 2. etasje',
+    capacity: 50,
+    color: '#c026d3',
+    permissions: {
+      'org-kulturstyret': 'REQUEST', 'org-blak': 'REQUEST', 'org-mar': 'REQUEST',
+      'org-sirenene': 'REQUEST', 'org-larmonien': 'REQUEST', 'org-immaturus': 'REQUEST',
+    },
+  },
+  {
+    id: 'room-korrommet',
+    name: 'Korrommet',
+    description: 'Øvingsrom. Larmonien, BLAK, MAR og Sirenene har rett på faste bookinger.',
+    location: 'Studentvillaen, 1. etasje',
+    color: '#db2777',
+    permissions: {
+      'org-kulturstyret': 'REQUEST', 'org-blak': 'DIRECT', 'org-mar': 'DIRECT',
+      'org-sirenene': 'DIRECT', 'org-larmonien': 'DIRECT', 'org-immaturus': 'REQUEST',
+    },
+  },
+  {
+    id: 'room-kantinen',
+    name: 'Gamle UiB-kantinen',
+    description: 'For organisasjoner uten andre egnede lokaler, hovedsakelig kor. Hverdager 16–24, helg 08–16. Ingen alkohol.',
+    location: 'Studentvillaen, 3. etasje',
+    color: '#ea580c',
+    permissions: {
+      'org-blak': 'DIRECT', 'org-mar': 'DIRECT', 'org-sirenene': 'DIRECT', 'org-larmonien': 'REQUEST',
+    },
+  },
+  {
+    id: 'room-blackbox',
+    name: 'Blackbox',
+    description: 'Scene- og øvingsrom, hovedsakelig for studentteateret Immaturus.',
+    location: 'Studentvillaen, 1. etasje',
+    color: '#334155',
+    permissions: {
+      'org-kulturstyret': 'REQUEST', 'org-blak': 'REQUEST', 'org-mar': 'REQUEST',
+      'org-sirenene': 'REQUEST', 'org-larmonien': 'REQUEST', 'org-immaturus': 'DIRECT',
+    },
   },
 ]
 
@@ -93,104 +181,126 @@ export function createSeedData(now: Date = new Date()): AppData {
   }
 
   // Approved bookings listed first take precedence if any of them overlap.
+  // Times stay clear of the mornings, which the service tests book.
   const seeds: Seed[] = [
     // Relative to today, so the conflict demo is always in the future.
     {
-      roomId: 'room-c', organizationId: 'org-c', requestedById: 'user-ingrid',
-      title: 'Quizkveld', description: 'Åpen quiz for alle studenter.',
+      roomId: 'room-festplassen', organizationId: 'org-kulturstyret', requestedById: 'user-sofie',
+      title: 'Kulturkveld', description: 'Åpen kveld der Villa-organisasjonene presenterer seg.',
       start: at(today, 2, '18:00'), end: at(today, 2, '22:00'), ...approvedFromRequest,
     },
-    // This week and next week, relative to Monday.
+    // Weekly rehearsals, this week and next week, relative to Monday.
+    ...[0, 7].flatMap((week): Seed[] => [
+      {
+        roomId: 'room-kantinen', organizationId: 'org-sirenene', requestedById: 'user-ingrid',
+        title: 'Korøvelse Sirenene', start: at(monday, week, '18:00'), end: at(monday, week, '21:00'),
+      },
+      {
+        roomId: 'room-korrommet', organizationId: 'org-blak', requestedById: 'user-kari',
+        title: 'Korøvelse BLAK', start: at(monday, week + 1, '18:00'), end: at(monday, week + 1, '21:00'),
+      },
+      {
+        roomId: 'room-kantinen', organizationId: 'org-mar', requestedById: 'user-ola',
+        title: 'Korøvelse MAR', start: at(monday, week + 2, '18:30'), end: at(monday, week + 2, '21:30'),
+      },
+      {
+        roomId: 'room-korrommet', organizationId: 'org-larmonien', requestedById: 'user-maria',
+        title: 'Orkesterøvelse', start: at(monday, week + 3, '19:00'), end: at(monday, week + 3, '22:00'),
+      },
+      {
+        roomId: 'room-marken', organizationId: 'org-blak', requestedById: 'user-kari',
+        title: 'Styremøte BLAK', description: 'Fast ukentlig styremøte.',
+        start: at(monday, week, '16:00'), end: at(monday, week, '17:30'),
+      },
+    ]),
     {
-      roomId: 'room-a', organizationId: 'org-a', requestedById: 'user-kari',
-      title: 'Styremøte', description: 'Fast ukentlig styremøte.',
-      start: at(monday, 0, '16:00'), end: at(monday, 0, '18:00'),
+      roomId: 'room-marken', organizationId: 'org-kulturstyret', requestedById: 'user-sofie',
+      title: 'Tildelingsmøte', description: 'Behandling av søknader om kulturmidler.',
+      start: at(monday, 2, '16:00'), end: at(monday, 2, '18:00'),
     },
     {
-      roomId: 'room-a', organizationId: 'org-b', requestedById: 'user-ola',
-      title: 'Økonomiutvalget', start: at(monday, 1, '12:15'), end: at(monday, 1, '13:00'),
+      roomId: 'room-skansen', organizationId: 'org-mar', requestedById: 'user-ola',
+      title: 'Opptak av nye sangere', start: at(monday, 3, '12:00'), end: at(monday, 3, '14:00'),
     },
     {
-      roomId: 'room-a', organizationId: 'org-a', requestedById: 'user-jonas',
-      title: 'Semesterplanlegging', description: 'Planlegging av arrangementer til våren.',
-      start: at(monday, 2, '10:00'), end: at(monday, 2, '11:30'),
+      roomId: 'room-nostet', organizationId: 'org-sirenene', requestedById: 'user-ingrid',
+      title: 'Styremøte Sirenene', start: at(monday, 1, '16:30'), end: at(monday, 1, '18:00'),
     },
     {
-      roomId: 'room-a', organizationId: 'org-b', requestedById: 'user-ola',
-      title: 'Intervjuer – nye frivillige', start: at(monday, 3, '14:00'), end: at(monday, 3, '16:00'),
+      roomId: 'room-nostet', organizationId: 'org-larmonien', requestedById: 'user-henrik',
+      title: 'Notekomité', start: at(monday, 4, '15:00'), end: at(monday, 4, '16:30'),
     },
     {
-      roomId: 'room-a', organizationId: 'org-a', requestedById: 'user-kari',
-      title: 'Styremøte', description: 'Fast ukentlig styremøte.',
-      start: at(monday, 7, '16:00'), end: at(monday, 7, '18:00'),
+      roomId: 'room-nostet', organizationId: 'org-immaturus', requestedById: 'user-jonas',
+      title: 'Manusgjennomgang', start: at(monday, 8, '17:00'), end: at(monday, 8, '19:00'),
     },
     {
-      roomId: 'room-a', organizationId: 'org-b', requestedById: 'user-ola',
-      title: 'Budsjettgjennomgang', start: at(monday, 9, '09:00'), end: at(monday, 9, '10:30'),
+      roomId: 'room-blackbox', organizationId: 'org-immaturus', requestedById: 'user-emil',
+      title: 'Prøve: vårforestilling', start: at(monday, 1, '17:00'), end: at(monday, 1, '21:00'),
     },
     {
-      roomId: 'room-b', organizationId: 'org-c', requestedById: 'user-ingrid',
-      title: 'Redaksjonsmøte', start: at(monday, 0, '18:00'), end: at(monday, 0, '19:30'),
+      roomId: 'room-blackbox', organizationId: 'org-immaturus', requestedById: 'user-emil',
+      title: 'Prøve: vårforestilling', start: at(monday, 3, '17:00'), end: at(monday, 3, '21:00'),
     },
     {
-      roomId: 'room-b', organizationId: 'org-a', requestedById: 'user-kari',
-      title: 'Workshop: søknadsskriving', description: 'Workshop for medlemmer om søknader til fond.',
-      start: at(monday, 1, '17:00'), end: at(monday, 1, '19:00'), ...approvedFromRequest,
+      roomId: 'room-blackbox', organizationId: 'org-immaturus', requestedById: 'user-jonas',
+      title: 'Premiere', description: 'Premiere på Immaturus sin vårforestilling.',
+      start: at(monday, 11, '19:00'), end: at(monday, 11, '22:00'),
     },
     {
-      roomId: 'room-b', organizationId: 'org-c', requestedById: 'user-jonas',
-      title: 'Redaksjonsmøte', start: at(monday, 3, '18:00'), end: at(monday, 3, '19:30'),
-    },
-    {
-      roomId: 'room-b', organizationId: 'org-c', requestedById: 'user-ingrid',
-      title: 'Redaksjonsmøte', start: at(monday, 7, '18:00'), end: at(monday, 7, '19:30'),
-    },
-    {
-      roomId: 'room-c', organizationId: 'org-b', requestedById: 'user-ola',
-      title: 'Allmøte', description: 'Semesterets allmøte med valg av nytt styre.',
+      roomId: 'room-festplassen', organizationId: 'org-mar', requestedById: 'user-ola',
+      title: 'Allmøte MAR', description: 'Semesterets allmøte med valg av nytt styre.',
       start: at(monday, 4, '18:00'), end: at(monday, 4, '21:00'), ...approvedFromRequest,
     },
     {
-      roomId: 'room-c', organizationId: 'org-a', requestedById: 'user-kari',
-      title: 'Fagdag', description: 'Fagdag med eksterne foredragsholdere.',
-      start: at(monday, 10, '10:00'), end: at(monday, 10, '15:00'), ...approvedFromRequest,
+      roomId: 'room-torgallmenningen', organizationId: 'org-blak', requestedById: 'user-kari',
+      title: 'Korseminar', description: 'Seminar med eksterne dirigenter og gjestesangere.',
+      start: at(monday, 5, '11:00'), end: at(monday, 5, '16:00'), ...approvedFromRequest,
+    },
+    {
+      roomId: 'room-kantinen', organizationId: 'org-larmonien', requestedById: 'user-maria',
+      title: 'Seksjonsøvelse', start: at(monday, 12, '10:00'), end: at(monday, 12, '14:00'), ...approvedFromRequest,
     },
 
     // Pending requests, all in the future.
     {
-      roomId: 'room-c', organizationId: 'org-a', requestedById: 'user-kari',
-      title: 'Debattmøte', description: 'Debatt om studentboliger med inviterte politikere.',
+      roomId: 'room-festplassen', organizationId: 'org-immaturus', requestedById: 'user-jonas',
+      title: 'Åpen scene', description: 'Improvisasjonskveld for alle studenter.',
       start: at(today, 2, '19:00'), end: at(today, 2, '21:00'), status: 'PENDING',
     },
     {
-      roomId: 'room-b', organizationId: 'org-a', requestedById: 'user-jonas',
-      title: 'Prosjektgruppe', description: 'Arbeidsmøte for prosjektgruppen.',
-      start: at(today, 1, '13:00'), end: at(today, 1, '15:00'), status: 'PENDING',
+      roomId: 'room-korrommet', organizationId: 'org-immaturus', requestedById: 'user-emil',
+      title: 'Sangprøve til forestillingen', start: at(today, 1, '13:00'), end: at(today, 1, '15:00'), status: 'PENDING',
     },
     {
-      roomId: 'room-c', organizationId: 'org-b', requestedById: 'user-ola',
-      title: 'Filmkveld', start: at(today, 5, '17:00'), end: at(today, 5, '20:00'), status: 'PENDING',
+      roomId: 'room-torgallmenningen', organizationId: 'org-larmonien', requestedById: 'user-maria',
+      title: 'Kammerkonsert', start: at(today, 5, '17:00'), end: at(today, 5, '20:00'), status: 'PENDING',
     },
     {
-      roomId: 'room-c', organizationId: 'org-c', requestedById: 'user-ingrid',
-      title: 'Konsertøving', description: 'Generalprøve før vårkonserten.',
+      roomId: 'room-torgallmenningen', organizationId: 'org-sirenene', requestedById: 'user-ingrid',
+      title: 'Konsert med gjestekor', description: 'Felleskonsert med et besøkende kor.',
       start: at(today, 5, '18:00'), end: at(today, 5, '21:00'), status: 'PENDING',
     },
     {
-      roomId: 'room-c', organizationId: 'org-a', requestedById: 'user-jonas',
-      title: 'Rekrutteringsstand', start: at(today, 8, '11:00'), end: at(today, 8, '15:00'), status: 'PENDING',
+      roomId: 'room-engen', organizationId: 'org-kulturstyret', requestedById: 'user-sofie',
+      title: 'Søknadsverksted', description: 'Hjelp til organisasjoner som søker kulturmidler.',
+      start: at(today, 8, '12:00'), end: at(today, 8, '14:00'), status: 'PENDING',
+    },
+    {
+      roomId: 'room-blackbox', organizationId: 'org-blak', requestedById: 'user-kari',
+      title: 'Konsertopptak', start: at(today, 6, '12:00'), end: at(today, 6, '15:00'), status: 'PENDING',
     },
 
     // Processed requests for history.
     {
-      roomId: 'room-c', organizationId: 'org-c', requestedById: 'user-ingrid',
-      title: 'Øvingskveld band', start: at(today, 3, '19:00'), end: at(today, 3, '22:00'),
+      roomId: 'room-kantinen', organizationId: 'org-larmonien', requestedById: 'user-henrik',
+      title: 'Ekstraøvelse', start: at(today, 3, '19:00'), end: at(today, 3, '22:00'),
       status: 'REJECTED', requiresApproval: true, decidedAt: decided, decidedById: 'user-admin',
-      decisionComment: 'Salen er satt av til rigging denne kvelden.', decisionSeen: false,
+      decisionComment: 'Kantinen er satt av til korene denne kvelden.', decisionSeen: false,
     },
     {
-      roomId: 'room-a', organizationId: 'org-b', requestedById: 'user-ola',
-      title: 'Kollokvie', start: at(today, 4, '10:00'), end: at(today, 4, '12:00'),
+      roomId: 'room-skansen', organizationId: 'org-mar', requestedById: 'user-ola',
+      title: 'Intervju', start: at(today, 4, '10:00'), end: at(today, 4, '11:00'),
       status: 'CANCELLED', cancelledAt: decided, cancelledById: 'user-ola',
     },
   ]

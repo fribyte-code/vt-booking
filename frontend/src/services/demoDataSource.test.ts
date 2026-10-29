@@ -26,8 +26,8 @@ describe('demo data source', () => {
     const start = new Date(Date.now() + 3 * 86_400_000)
     start.setHours(6, 0, 0, 0)
     const request = await source.createBooking({
-      roomId: 'room-c',
-      organizationId: 'org-a',
+      roomId: 'room-festplassen',
+      organizationId: 'org-blak',
       title: 'Allmøte',
       start: start.toISOString(),
       end: new Date(start.getTime() + 3_600_000).toISOString(),
@@ -66,8 +66,8 @@ describe('demo data source', () => {
     const at = (weeks: number, hours = 0) => new Date(start.getTime() + weeks * 7 * 86_400_000 + hours * 3_600_000)
     const until = at(2)
     const input = {
-      roomId: 'room-a',
-      organizationId: 'org-a',
+      roomId: 'room-marken',
+      organizationId: 'org-blak',
       title: 'Øving',
       start: start.toISOString(),
       end: at(0, 1).toISOString(),
@@ -80,7 +80,7 @@ describe('demo data source', () => {
     const { seriesId, created } = await source.series.create(input)
 
     const moved = await source.updateBooking(created[0], {
-      roomId: 'room-a',
+      roomId: 'room-marken',
       title: 'Flyttet',
       start: at(0, 1).toISOString(),
       end: at(0, 2).toISOString(),

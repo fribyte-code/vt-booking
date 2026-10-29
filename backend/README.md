@@ -83,6 +83,7 @@ The CSRF token rotates on login, so call `/api/auth/csrf` again and read a fresh
 | GET | `/api/bookings/mine` | Your own bookings and requests, in every status, that ended in the last 90 days or later |
 | GET | `/api/bookings/requests` | Admin only. Pending requests that have not started, plus the 50 most recently decided ones. |
 | GET | `/api/bookings/{id}` | One booking. Returns 404 if you may not see it. |
+| GET | `/api/bookings/{id}/calendar.ics` | An approved booking as an iCalendar file (`text/calendar`, inline), for "Legg til i kalender" (Apple Calendar has no add-event link). 404 if you may not see it, 409 if not approved. |
 | POST | `/api/bookings` | `{ roomId, organizationId, title, description?, start, end }`. Returns 201 with `APPROVED` (DIRECT) or `PENDING` (REQUEST). |
 | POST | `/api/bookings/{id}/approve` | Admin only. `{ version, comment? }` |
 | POST | `/api/bookings/{id}/reject` | Admin only. `{ version, reason }` |
@@ -91,6 +92,7 @@ The CSRF token rotates on login, so call `/api/auth/csrf` again and read a fresh
 | POST | `/api/bookings/series/preview` | Weekly series dry run, same body as below. `{ occurrences: [{ start, end, conflict }] }` |
 | POST | `/api/bookings/series` | `{ roomId, organizationId, title, description?, start, end, recurrence: { intervalWeeks (1–4), until (local date, inclusive) }, skipConflicts? }`. 2–52 occurrences. 201 `{ seriesId, created: [booking], skipped: [{ start, end }] }`; a conflict without `skipConflicts` is 409 with `conflicts: [{ start, end }]` and nothing written. |
 | GET | `/api/bookings/series/{seriesId}` | The occurrences you may see, by start |
+| GET | `/api/bookings/series/{seriesId}/calendar.ics` | The series' approved occurrences that have not ended, one event each. 409 if there are none. |
 | PUT | `/api/bookings/series/{seriesId}` | Edit an occurrence and the following ones. `{ fromBookingId, version, roomId, title, description?, start, end, skipConflicts?, dryRun? }`. 200 `{ updated: [booking], skipped: [{ id, start, end }] }`; a conflict without `skipConflicts` is 409 with `conflicts: [{ id, start, end }]`. |
 | POST | `/api/bookings/series/{seriesId}/cancel` | `{ fromBookingId?, reason? }`. Every future occurrence, or that one and the following. Returns the cancelled ones. |
 | POST | `/api/bookings/series/{seriesId}/approve` | Admin only. `{ comment? }`. 200 `{ approved: [booking], notApproved: [{ id, start, end, code, reason }] }` |

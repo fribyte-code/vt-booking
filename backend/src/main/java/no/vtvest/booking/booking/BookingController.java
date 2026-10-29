@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.UUID;
 import no.vtvest.booking.security.CurrentUser;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,12 +28,25 @@ class BookingController {
 
     private final BookingService bookingService;
     private final BookingSeriesService seriesService;
+    private final CalendarExport calendarExport;
     private final CurrentUser currentUser;
 
-    BookingController(BookingService bookingService, BookingSeriesService seriesService, CurrentUser currentUser) {
+    BookingController(BookingService bookingService, BookingSeriesService seriesService, CalendarExport calendarExport,
+            CurrentUser currentUser) {
         this.bookingService = bookingService;
         this.seriesService = seriesService;
+        this.calendarExport = calendarExport;
         this.currentUser = currentUser;
+    }
+
+    private static final MediaType TEXT_CALENDAR = MediaType.parseMediaType("text/calendar;charset=UTF-8");
+
+    /** Inline, so Safari on iPhone opens it in the Calendar app instead of saving a file. */
+    private static ResponseEntity<String> calendarFile(String ics) {
+        return ResponseEntity.ok()
+                .contentType(TEXT_CALENDAR)
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline().filename("booking.ics").build().toString())
+                .body(ics);
     }
 
     @GetMapping
@@ -56,6 +72,12 @@ class BookingController {
     @GetMapping("/{id}")
     BookingResponse get(@PathVariable UUID id) {
         return bookingService.get(currentUser.require(), id);
+    }
+
+    /** An approved booking as an iCalendar file, for "Legg til i kalender". */
+    @GetMapping("/{id}/calendar.ics")
+    ResponseEntity<String> calendar(@PathVariable UUID id) {
+        return calendarFile(calendarExport.booking(currentUser.require(), id));
     }
 
     @PostMapping("/{id}/approve")
@@ -100,6 +122,12 @@ class BookingController {
     @GetMapping("/series/{seriesId}")
     List<BookingResponse> series(@PathVariable UUID seriesId) {
         return seriesService.get(currentUser.require(), seriesId);
+    }
+
+    /** The series' upcoming approved occurrences as an iCalendar file. */
+    @GetMapping("/series/{seriesId}/calendar.ics")
+    ResponseEntity<String> seriesCalendar(@PathVariable UUID seriesId) {
+        return calendarFile(calendarExport.series(currentUser.require(), seriesId));
     }
 
     /** Edits an occurrence and the following ones. */
