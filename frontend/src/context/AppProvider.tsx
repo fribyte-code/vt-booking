@@ -12,6 +12,9 @@ import { AppContext, type AppContextValue, type BookingDraft, type Toast, type T
 
 const PREFS_KEY = 'vt-booking:calendar-prefs'
 const DAY = 24 * 60 * 60 * 1000
+// How often the data is loaded again in the background while the tab is visible, so bookings and
+// requests made by others show up without a page reload. There is no push channel from the API.
+const REFRESH_MS = 30_000
 
 let nextToastId = 0
 
@@ -72,6 +75,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [range, setRange] = useState<DateRange>(initialRange)
   // Bumped to load again without changing user or range (retry, stale data).
   const [reloadKey, setReloadKey] = useState(0)
+  // The reloadKey of a background refresh: it shows no loading indicator and reports no errors.
+  const [backgroundKey, setBackgroundKey] = useState<number | null>(null)
   const [loadedKey, setLoadedKey] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [prefs, setPrefs] = useState<CalendarPrefs>(() =>
@@ -146,16 +151,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const requestKey = `${userId}|${range.start}|${range.end}|${reloadKey}`
-  const loading = !!userId && loadedKey !== requestKey
+  const pending = !!userId && loadedKey !== requestKey
+  const loading = pending && backgroundKey !== reloadKey
 
   useEffect(() => {
     if (!userId || mustChangePassword) return
     // Only the latest load may update state, so a slow response can't overwrite a newer one.
     let cancelled = false
+    const background = backgroundKey === reloadKey
     dataSource.load(range).then(
       (next) => {
         if (cancelled) return
-        setData(next)
+        // Keep the old object when nothing changed, so a refresh doesn't re-render the calendar
+        // (and reset an event that is being dragged).
+        setData((prev) => (prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
         setLoadError(null)
         setLoadedKey(requestKey)
         settleWaiters()
@@ -168,7 +177,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           endSession()
         } else if (needsPasswordChange(err)) {
           setMustChangePassword(true)
-        } else {
+        } else if (!background) {
           // Shown full-screen before the first load, and as a toast over existing data after it.
           setLoadError(errorMessage(err))
           notify(errorMessage(err), 'error')
@@ -178,7 +187,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [userId, mustChangePassword, range, requestKey, endSession, notify, settleWaiters])
+  }, [userId, mustChangePassword, range, requestKey, reloadKey, backgroundKey, endSession, notify, settleWaiters])
+
+  // Background refresh: some time after the last load while the tab is visible, and right away
+  // when the user comes back to the tab. Never while a load is running.
+  useEffect(() => {
+    if (!userId || mustChangePassword || pending) return
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return
+      setBackgroundKey(reloadKey + 1)
+      setReloadKey(reloadKey + 1)
+    }
+    const timer = setTimeout(refresh, REFRESH_MS)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [userId, mustChangePassword, pending, reloadKey])
 
   const updatePrefs = useCallback((next: Partial<CalendarPrefs>) => {
     setPrefs((p) => {

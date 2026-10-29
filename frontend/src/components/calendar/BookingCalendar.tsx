@@ -156,7 +156,8 @@ export function BookingCalendar({
       eventDrop={handleMove}
       eventResize={handleMove}
       eventDidMount={(arg: EventMountArg) => {
-        arg.el.style.setProperty('--room-color', (arg.event.extendedProps as EventProps).color)
+        const { color } = arg.event.extendedProps as Partial<EventProps>
+        if (color) arg.el.style.setProperty('--room-color', color)
       }}
       datesSet={onDatesSet}
       dayHeaderContent={renderDayHeader}
@@ -194,7 +195,10 @@ function renderDayHeader(arg: DayHeaderContentArg) {
 }
 
 function renderEvent(arg: EventContentArg) {
-  const { booking, roomName, organization } = arg.event.extendedProps as EventProps
+  const { booking, roomName, organization } = arg.event.extendedProps as Partial<EventProps>
+  // The placeholder FullCalendar draws for a time being selected has no booking. Throwing here
+  // breaks the calendar's rendering, so later changes stop showing until the page is reloaded.
+  if (!booking) return <span className="text-xs">{arg.timeText}</span>
   const pending = booking.status === 'PENDING'
   const label = `${booking.title}, ${arg.timeText}, ${roomName}${pending ? ', venter på godkjenning' : ''}${booking.seriesId ? ', gjentakende' : ''}`
 

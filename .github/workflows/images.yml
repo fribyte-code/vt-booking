@@ -1,6 +1,6 @@
 # Builds the backend and frontend images on every push to main or dev and publishes them to the
-# GitHub Container Registry, tagged with the commit SHA and `latest` (main) or `dev` (dev). The server pulls them with
-# `make prod-pull` (see docs/DEPLOYMENT.md).
+# GitHub Container Registry, tagged with the commit SHA and `latest` (main) or `dev` (dev). The
+# server pulls them with `make prod-pull` (see docs/DEPLOYMENT.md).
 name: Docker images
 
 on:
