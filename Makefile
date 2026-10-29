@@ -9,7 +9,7 @@ E2E_BASE_URL ?= http://localhost:5173
 APP_PORT ?= 8088
 export APP_PORT
 
-.PHONY: help dev demo test e2e up down reset-db bootstrap-admin prod-up prod-down prod-logs prod-update prod-bootstrap-admin
+.PHONY: help dev demo test e2e up down reset-db bootstrap-admin prod-up prod-down prod-logs prod-update prod-pull prod-bootstrap-admin
 
 help: ## Show this list
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-22s %s\n", $$1, $$2}'
@@ -73,6 +73,10 @@ prod-logs: ## Production: follow the logs of all services
 
 prod-update: ## Production: rebuild the images from this checkout and restart (back up first)
 	$(PROD) up -d --build --wait
+
+prod-pull: ## Production: pull the images built by CI (IMAGE_TAG in .env) and restart (back up first)
+	$(PROD) pull backend frontend
+	$(PROD) up -d --no-build --wait
 
 prod-bootstrap-admin: ## Production: create the first system administrator (interactive)
 	$(PROD) run --rm backend bootstrap-admin

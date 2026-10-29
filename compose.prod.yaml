@@ -21,6 +21,8 @@ services:
     # No ports: only the API reaches the database.
 
   backend:
+    # Pulled from GHCR (built by .github/workflows/images.yml), or built locally with `make prod-update`.
+    image: ghcr.io/fribyte-code/vt-booking-backend:${IMAGE_TAG:-latest}
     build: backend
     environment:
       # No SPRING_PROFILES_ACTIVE: the dev profile must never run in production.
@@ -40,6 +42,7 @@ services:
     # No ports: only Nginx reaches the API. Never publish 8080 (see docs/DEPLOYMENT.md).
 
   frontend:
+    image: ghcr.io/fribyte-code/vt-booking-frontend:${IMAGE_TAG:-latest}
     build: frontend # WITH_DEMO defaults to false: no demo in production
     environment:
       # The reverse proxy in front of Nginx, as Nginx sees it, and the header with the client address.

@@ -1,6 +1,6 @@
 # Running in production
 
-How to run the booking system on a server with Docker Compose, behind your own HTTPS reverse proxy. Everything is built from this repository; there are no prebuilt images.
+How to run the booking system on a server with Docker Compose, behind your own HTTPS reverse proxy. The images are either pulled prebuilt from the GitHub Container Registry (built by CI on every push to `main`) or built on the server from this checkout.
 
 `compose.prod.yaml` runs three containers:
 
@@ -49,7 +49,7 @@ make prod-bootstrap-admin     # interactive: email, name and password of the fir
 
 | Command | |
 |---|---|
-| `make prod-up` | Start (or apply changes in `.env`) |
+| `make prod-up` | Start (or apply changes in `.env`). Pulls the images the first time, or builds them if the pull fails. |
 | `make prod-down` | Stop. The database is kept. |
 | `make prod-logs` | Follow the logs |
 | `docker compose -f compose.prod.yaml ps` | Status and health |
@@ -58,13 +58,30 @@ Restarting the backend logs everyone out: sessions are kept in memory. Run only 
 
 ## Updating
 
+### Prebuilt images (recommended)
+
+Every push to `main` (and `dev`) runs `.github/workflows/images.yml`, which publishes two images, each tagged `latest` and with the full commit SHA:
+
+- `ghcr.io/fribyte-code/vt-booking-backend`
+- `ghcr.io/fribyte-code/vt-booking-frontend`
+
+```bash
+# 1. Back up (below)
+git pull                      # only needed if compose.prod.yaml, the Makefile or .env.example changed
+make prod-pull                # pulls the images for IMAGE_TAG (default latest) and restarts
+```
+
+`IMAGE_TAG` in `.env` selects the version: `latest`, or a commit SHA to pin one. Pushes to `dev` publish the same images tagged `dev`, for a test server; never use `dev` in production. If the packages are private (GHCR's default for organization repositories), log in once on the server with `docker login ghcr.io` using a GitHub token with `read:packages`, or make the packages public under the organization's **Packages** settings.
+
+### Building on the server
+
 ```bash
 # 1. Back up (below)
 git pull
 make prod-update              # rebuilds the images from this checkout and restarts
 ```
 
-Database migrations run automatically when the backend starts. To roll back: check out the previous version, restore the backup taken in step 1 (the new version may have changed the database), and run `make prod-update`.
+Database migrations run automatically when the backend starts. To roll back: restore the backup taken in step 1 (the new version may have changed the database), then either set `IMAGE_TAG` to the previous commit SHA and run `make prod-pull`, or check out the previous version and run `make prod-update`.
 
 ## Backup
 
