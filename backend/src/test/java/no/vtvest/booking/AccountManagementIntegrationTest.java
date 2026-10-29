@@ -12,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -162,6 +164,29 @@ class AccountManagementIntegrationTest extends IntegrationTest {
 
         send(post("/api/admin/rooms"), ADMIN, "{\"name\":\"grupperom 1\",\"color\":\"#16a34a\",\"defaultPermission\":\"NONE\"}")
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void roomsWithBookingsMustBeArchivedBeforeTheyAreDeleted() throws Exception {
+        send(put("/api/admin/rooms/" + ROOM_B + "/access/" + ORG_A), ADMIN, "{\"permission\":\"DIRECT\"}").andExpect(status().isOk());
+        send(delete("/api/admin/rooms/" + ROOM_B), KARI, null).andExpect(status().isForbidden());
+        send(delete("/api/admin/rooms/" + ROOM_B), ADMIN, null).andExpect(status().isNoContent());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM room_access WHERE room_id = ?", Integer.class, ROOM_B)).isZero();
+        send(delete("/api/admin/rooms/" + ROOM_B), ADMIN, null).andExpect(status().isNotFound());
+
+        // Even a booking in the past keeps an active room.
+        UUID booking = insertBooking(ROOM_A, ORG_A, KARI_ID, Instant.now().minus(30, ChronoUnit.DAYS), "APPROVED");
+        send(get("/api/admin/rooms"), ADMIN, null)
+                .andExpect(jsonPath("$[?(@.id == '" + ROOM_A + "')].bookingCount").value(1));
+        send(delete("/api/admin/rooms/" + ROOM_A), ADMIN, null)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM rooms WHERE id = ?", Integer.class, ROOM_A)).isOne();
+
+        // Archived: deleted together with its bookings.
+        jdbc.update("UPDATE rooms SET status = 'ARCHIVED' WHERE id = ?", ROOM_A);
+        send(delete("/api/admin/rooms/" + ROOM_A), ADMIN, null).andExpect(status().isNoContent());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM bookings WHERE id = ?", Integer.class, booking)).isZero();
     }
 
     @Test

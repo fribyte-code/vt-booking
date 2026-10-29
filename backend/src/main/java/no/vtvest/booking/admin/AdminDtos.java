@@ -84,7 +84,9 @@ final class AdminDtos {
             RoomStatus status,
             Permission defaultPermission,
             /** Per-organization overrides of the default. */
-            List<RoomAccessEntry> access) {}
+            List<RoomAccessEntry> access,
+            /** All bookings in the room, past and cancelled ones included: what deleting it would remove. */
+            int bookingCount) {}
 
     record RoomFields(
             @NotBlank @Size(max = 80) String name,

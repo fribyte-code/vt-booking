@@ -48,6 +48,8 @@ export interface AdminRoom extends RoomFields {
   id: string
   status: RoomStatus
   access: { organizationId: string; permission: Permission }[]
+  /** All bookings in the room, past and cancelled ones included. */
+  bookingCount: number
 }
 
 export interface Member {
@@ -112,6 +114,10 @@ export const adminApi = {
   rooms: () => api.get<AdminRoom[]>('/api/admin/rooms'),
   createRoom: (body: RoomFields) => api.post<AdminRoom>('/api/admin/rooms', body),
   updateRoom: (roomId: string, body: RoomFields) => api.put<AdminRoom>(`/api/admin/rooms/${id(roomId)}`, body),
+  /** A room with bookings must be archived first (409 otherwise); its bookings are then deleted with it. */
+  deleteRoom: async (roomId: string) => {
+    await api.send('DELETE', `/api/admin/rooms/${id(roomId)}`)
+  },
   setRoomAccess: (roomId: string, organizationId: string, permission: Permission | null) =>
     api.put<AdminRoom>(`/api/admin/rooms/${id(roomId)}/access/${id(organizationId)}`, { permission }),
 

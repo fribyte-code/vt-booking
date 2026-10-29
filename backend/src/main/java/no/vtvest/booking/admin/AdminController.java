@@ -130,6 +130,14 @@ class AdminController {
         return admin.updateRoom(requireAdmin(), id, body);
     }
 
+    /** A room with bookings must be archived first; its bookings are then deleted with it. */
+    @DeleteMapping("/rooms/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void deleteRoom(@PathVariable UUID id) {
+        requireAdmin();
+        admin.deleteRoom(id);
+    }
+
     @GetMapping("/rooms/{id}/future-bookings")
     List<BookingResponse> roomFutureBookings(@PathVariable UUID id) {
         return admin.futureBookings(requireAdmin(), BookingService.Scope.ROOM, id);

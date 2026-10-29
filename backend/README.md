@@ -107,6 +107,7 @@ The CSRF token rotates on login, so call `/api/auth/csrf` again and read a fresh
 | PATCH | `/api/admin/organizations/{id}` | Any of `{ name, status, cancelFutureBookings }` |
 | GET, POST | `/api/admin/rooms` | List (with access overrides), or create `{ name, description?, location?, capacity?, color, defaultPermission }` |
 | PUT | `/api/admin/rooms/{id}` | The same fields, plus `status` and `cancelFutureBookings` |
+| DELETE | `/api/admin/rooms/{id}` | Deletes the room with its access overrides. A room with bookings must be `ARCHIVED` first (409 `CONFLICT` otherwise); its bookings, past ones included, are then deleted with it |
 | PUT | `/api/admin/rooms/{id}/access/{organizationId}` | `{ permission }` sets the organization's override; `{ permission: null }` removes it |
 | GET | `/api/organizations/{id}/members` | Organization admins (active organization) and SYSTEM_ADMINs. `[{ userId, displayName, email, role, status }]` |
 | POST | `/api/organizations/{id}/members` | `{ email, displayName?, role }`. 201 `{ result, member, temporaryPassword }`, see "Adding members" below. |

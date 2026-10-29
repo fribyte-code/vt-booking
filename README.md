@@ -160,12 +160,12 @@ Systemet skal hostes på egne servere og bygges som en Single Page Application (
 
 
 ### Fremtidige forbedringer
-- Create docker image Ci
-- Automatisk oppdatere bookinger osv som kommer (trenger godkjenning?)
-- iCal til kalender iphone typ
+- Create docker image Ci x
+- Automatisk oppdatere bookinger osv som kommer (trenger godkjenning?) x
+- iCal til kalender iphone typ x
 - Stillbart booking detaljer om tid og uker osv?
 - Kan ikke ha flerne rom med samme farge? eller kanskje? Endre default farge til en ikke tatt? men ikke tvinge til det?
-- Rom og tilganger view litt bedre
+- Rom og tilganger view litt bedre (Klikke inn og se alle tilganger for hver organisasjon og kan endre)
 - Tilganger osv ? brukere typ
 - Multitenant løsning? (flere organisasjoner med egne adminer og bookinger osv)
 - 

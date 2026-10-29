@@ -1,15 +1,18 @@
-import { Pencil, Plus } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useId, useState } from 'react'
 import { useApp } from '../../hooks/useApp'
+import { sameColor, suggestColor } from '../../lib/color'
 import { errorMessage } from '../../lib/errors'
 import { permissionLabels } from '../../services/bookingRules'
 import { type AdminOrganization, type AdminRoom, adminApi, type RoomFields, type RoomStatus, roomStatusLabels } from '../../services/adminApi'
 import type { Permission } from '../../types'
 import { RoomDot } from '../booking/badges'
 import { Button } from '../ui/Button'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { Alert, Field, Input, Select, Textarea } from '../ui/fields'
 import { Modal } from '../ui/Modal'
 import { Chip } from './Chip'
+import { ColorPicker } from './ColorPicker'
 import { FutureBookingsDialog } from './FutureBookingsDialog'
 import { useAdminData } from './useAdminData'
 
@@ -103,6 +106,7 @@ export function RoomsAdmin() {
       {editing && (
         <RoomDialog
           room={editing === 'new' ? null : editing}
+          rooms={rooms}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)
@@ -114,15 +118,28 @@ export function RoomsAdmin() {
   )
 }
 
-function RoomDialog({ room, onClose, onSaved }: { room: AdminRoom | null; onClose: () => void; onSaved: () => void }) {
+function RoomDialog({ room, rooms, onClose, onSaved }: { room: AdminRoom | null; rooms: AdminRoom[]; onClose: () => void; onSaved: () => void }) {
   const id = useId()
+  // Archived rooms are no longer shown in the calendar, so their colors count as free.
+  const others = rooms.filter((r) => r.id !== room?.id && r.status !== 'ARCHIVED')
   const [fields, setFields] = useState<RoomFields>(
-    room ?? { name: '', description: '', location: '', capacity: null, color: '#2563eb', defaultPermission: 'REQUEST' },
+    () =>
+      room ?? {
+        name: '',
+        description: '',
+        location: '',
+        capacity: null,
+        color: suggestColor(others.map((r) => r.color)),
+        defaultPermission: 'REQUEST',
+      },
   )
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [confirmClosing, setConfirmClosing] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const set = (patch: Partial<RoomFields>) => setFields((f) => ({ ...f, ...patch }))
+  // A room with bookings must be archived (and saved) before it can be deleted.
+  const deletable = !!room && (room.bookingCount === 0 || room.status === 'ARCHIVED')
   // Closing or archiving the room: the administrator decides what happens to its future bookings first.
   const closing = !!room && fields.status !== room.status && (fields.status === 'DISABLED' || fields.status === 'ARCHIVED')
 
@@ -163,12 +180,41 @@ function RoomDialog({ room, onClose, onSaved }: { room: AdminRoom | null; onClos
     )
   }
 
+  if (room && confirmDelete) {
+    return (
+      <ConfirmDialog
+        title={`Slette ${room.name}?`}
+        confirmLabel="Slett rom"
+        destructive
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={async () => {
+          try {
+            await adminApi.deleteRoom(room.id)
+            onSaved()
+          } catch (err) {
+            setError(errorMessage(err))
+            setConfirmDelete(false)
+          }
+        }}
+      >
+        {room.bookingCount === 0
+          ? 'Rommet og tilgangsinnstillingene slettes for godt.'
+          : `Rommet, tilgangsinnstillingene og alle ${room.bookingCount} bookinger i det, også tidligere bookinger, slettes for godt. Dette kan ikke angres.`}
+      </ConfirmDialog>
+    )
+  }
+
   return (
     <Modal
       title={room ? `Rediger ${room.name}` : 'Nytt rom'}
       onClose={onClose}
       footer={
         <>
+          {deletable && (
+            <Button variant="danger" className="mr-auto" onClick={() => setConfirmDelete(true)}>
+              <Trash2 className="size-4" /> Slett
+            </Button>
+          )}
           <Button variant="ghost" onClick={onClose}>
             Avbryt
           </Button>
@@ -185,7 +231,7 @@ function RoomDialog({ room, onClose, onSaved }: { room: AdminRoom | null; onClos
         <Field label="Beskrivelse" htmlFor={`${id}-desc`}>
           <Textarea id={`${id}-desc`} rows={2} maxLength={1000} value={fields.description ?? ''} onChange={(e) => set({ description: e.target.value })} />
         </Field>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Plassering" htmlFor={`${id}-loc`}>
             <Input id={`${id}-loc`} value={fields.location ?? ''} maxLength={120} onChange={(e) => set({ location: e.target.value })} />
           </Field>
@@ -198,10 +244,13 @@ function RoomDialog({ room, onClose, onSaved }: { room: AdminRoom | null; onClos
               onChange={(e) => set({ capacity: e.target.value ? Number(e.target.value) : null })}
             />
           </Field>
-          <Field label="Farge" htmlFor={`${id}-color`}>
-            <Input id={`${id}-color`} type="color" className="px-1" value={fields.color} onChange={(e) => set({ color: e.target.value })} />
-          </Field>
         </div>
+        <ColorPicker
+          id={`${id}-color`}
+          value={fields.color}
+          onChange={(color) => set({ color })}
+          usedBy={(color) => others.filter((r) => sameColor(r.color, color)).map((r) => r.name)}
+        />
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Standardtilgang" htmlFor={`${id}-perm`} hint="Gjelder organisasjoner uten egen innstilling.">
             <Select id={`${id}-perm`} value={fields.defaultPermission} onChange={(e) => set({ defaultPermission: e.target.value as Permission })}>
@@ -213,7 +262,15 @@ function RoomDialog({ room, onClose, onSaved }: { room: AdminRoom | null; onClos
             </Select>
           </Field>
           {room && (
-            <Field label="Status" htmlFor={`${id}-status`} hint="Stengte rom vises, men kan ikke bookes.">
+            <Field
+              label="Status"
+              htmlFor={`${id}-status`}
+              hint={
+                deletable
+                  ? 'Stengte rom vises, men kan ikke bookes.'
+                  : 'Stengte rom vises, men kan ikke bookes. Rom med bookinger må arkiveres før de kan slettes.'
+              }
+            >
               <Select id={`${id}-status`} value={fields.status} onChange={(e) => set({ status: e.target.value as RoomStatus })}>
                 {(Object.keys(roomStatusLabels) as RoomStatus[]).map((s) => (
                   <option key={s} value={s}>

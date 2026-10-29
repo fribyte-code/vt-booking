@@ -263,17 +263,21 @@ class AdminService {
 
     // ── Rooms ──────────────────────────────────────────────────────
 
+    private static final String ROOMS = """
+            SELECT r.*, (SELECT count(*) FROM bookings b WHERE b.room_id = r.id) AS booking_count FROM rooms r
+            """;
+
     @Transactional(readOnly = true)
     List<AdminRoom> listRooms() {
         Map<UUID, List<RoomAccessEntry>> access =
                 accessByRoom("SELECT room_id, organization_id, permission FROM room_access");
-        return jdbc.query("SELECT * FROM rooms ORDER BY status, lower(name)", (rs, i) -> toRoom(rs, access));
+        return jdbc.query(ROOMS + " ORDER BY r.status, lower(r.name)", (rs, i) -> toRoom(rs, access));
     }
 
     private AdminRoom room(UUID id) {
         Map<UUID, List<RoomAccessEntry>> access =
                 accessByRoom("SELECT room_id, organization_id, permission FROM room_access WHERE room_id = ?", id);
-        return jdbc.query("SELECT * FROM rooms WHERE id = ?", (rs, i) -> toRoom(rs, access), id)
+        return jdbc.query(ROOMS + " WHERE r.id = ?", (rs, i) -> toRoom(rs, access), id)
                 .stream().findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Rommet finnes ikke."));
     }
@@ -296,7 +300,8 @@ class AdminService {
                 rs.getString("color"),
                 RoomStatus.valueOf(rs.getString("status")),
                 Permission.valueOf(rs.getString("default_permission")),
-                new ArrayList<>(access.getOrDefault(id, List.of())));
+                new ArrayList<>(access.getOrDefault(id, List.of())),
+                rs.getInt("booking_count"));
     }
 
     @Transactional
@@ -331,6 +336,24 @@ class AdminService {
             bookingService.cancelFuture(actor, BookingService.Scope.ROOM, id, true, reason);
         }
         return room(id);
+    }
+
+    /**
+     * Deletes a room with its access rules. A room that has never had a booking (e.g. one created by
+     * mistake) can be deleted directly. One with bookings, past and cancelled ones included, must be
+     * archived first, and then its bookings are deleted with it. Booking writes lock the room row
+     * first, so none can be added between the check and the delete.
+     */
+    @Transactional
+    void deleteRoom(UUID id) {
+        List<String> status = jdbc.queryForList("SELECT status FROM rooms WHERE id = ? FOR UPDATE", String.class, id);
+        if (status.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "Rommet finnes ikke.");
+        if (!status.getFirst().equals(RoomStatus.ARCHIVED.name()) && Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM bookings WHERE room_id = ?)", Boolean.class, id))) {
+            throw new ApiException(ErrorCode.CONFLICT, "Rommet har bookinger. Arkiver det først, så kan det slettes.");
+        }
+        jdbc.update("DELETE FROM bookings WHERE room_id = ?", id);
+        jdbc.update("DELETE FROM rooms WHERE id = ?", id);
     }
 
     @Transactional
