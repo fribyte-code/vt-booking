@@ -157,3 +157,15 @@ Systemet skal hostes på egne servere og bygges som en Single Page Application (
 - Gjerne ikke se 100% likt ut som google kalender, men ha en enkel og oversiktlig kalender som er lett å bruke.
 - Klikk and drop tider for å flytte bookinger.
 - Kunne legge til rom
+
+
+### Fremtidige forbedringer
+- Systemadminastrator kan legge til nye systemadmins?
+- Create docker image Ci
+- Automatisk oppdatere bookinger osv som kommer (trenger godkjenning?)
+- iCal til kalender iphone typ
+- Stillbart booking detaljer om tid og uker osv?
+- Kan ikke ha flerne rom med samme farge? eller kanskje? Endre default farge til en ikke tatt? men ikke tvinge til det?
+
+
+
