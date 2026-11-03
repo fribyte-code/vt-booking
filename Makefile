@@ -5,11 +5,10 @@ FRONTEND := frontend
 BACKEND  := backend
 COMPOSE  := docker compose
 PROD     := docker compose -f compose.prod.yaml
-E2E_BASE_URL ?= http://localhost:5173
 APP_PORT ?= 8088
 export APP_PORT
 
-.PHONY: help dev test e2e up down reset-db bootstrap-admin prod-up prod-down prod-logs prod-update prod-pull prod-bootstrap-admin
+.PHONY: help dev test up down reset-db bootstrap-admin prod-up prod-down prod-logs prod-update prod-pull prod-bootstrap-admin
 
 help: ## Show this list
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-22s %s\n", $$1, $$2}'
@@ -31,13 +30,6 @@ dev: $(FRONTEND)/node_modules ## PostgreSQL in Docker, Spring Boot and React loc
 test: $(FRONTEND)/node_modules ## Frontend and backend tests (backend needs Docker for Testcontainers)
 	cd $(FRONTEND) && npm test
 	cd $(BACKEND) && ./mvnw -q test
-
-e2e: $(FRONTEND)/node_modules ## End-to-end workflow against the local app (make dev, or make up with E2E_BASE_URL=http://localhost:8088), as E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD; creates and archives its own test data through the admin API
-	@test -n "$$E2E_ADMIN_EMAIL" -a -n "$$E2E_ADMIN_PASSWORD" || \
-	  { echo "Set E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD to a system administrator of the local database ('make bootstrap-admin' creates one)."; exit 1; }
-	@curl -sf -o /dev/null $(E2E_BASE_URL)/api/auth/csrf || \
-	  { echo "No API at $(E2E_BASE_URL). Start it with 'make dev' or 'make up' first."; exit 1; }
-	cd $(FRONTEND) && E2E_BASE_URL=$(E2E_BASE_URL) npx vitest run apiWorkflow
 
 up: ## Build and run the complete application in Docker on http://localhost:8088 (APP_PORT to change)
 	$(COMPOSE) up -d --build --wait

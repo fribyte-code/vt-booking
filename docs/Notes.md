@@ -63,10 +63,12 @@ Status for hvert spørsmål står i `docs/OPEN_QUESTIONS.md`.
 ### Etter første møte / tilbakemeldinger
 - Over midnatt, må være mulig men merkes med stjerne eller noe. (Han må kontakte vektere) - MAX priotering x
 - Annerledes UI, velge annet UI. horisontal løsnings. hvert rom kommer nedover i rader. 1 dag om gangen. kolloner bortover tider. Cavnas? (ikke ta vekk original, men endre view) -Høy priotering x
-- Kan kunne legge inn en søknad anonymt, også uten å logge inn. Kulturstyre nettside skjema. Samme felter
-- Kunne filtrere på åpne søknader, osv rom, hvem som er der osv
+- Kunne filtrere på åpne søknader, osv rom, hvem som er der osv x
+
+- Kan kunne legge inn en søknad anonymt, også uten å logge inn. Kulturstyre nettside skjema. Samme felter 
 - rom moderator. Ny rolle. Enkelt rom eller flerne rom. Rolle. Ansvar for noen rom - Middels 
-- Over 2 uker gamlet, auto hide. Bookiner default hidden men kanskje der uansett
+- Over 2 uker gamlet, auto hide. Bookiner default hidden men kanskje der uansett 
+
 - Mottar søknad, aksepterte. Logg for de. Mye av arbeidet er han så legger inn. Mer skjema accept. Ønsker en logg for hva han legger inn også. Litt usikker her. Vente.
 - Ønsker en chat funksjon, private chatter -Lav priotering
 - Ved opprettelse av bruker, ta vekk at man må skrive næverandre passord igjen.
