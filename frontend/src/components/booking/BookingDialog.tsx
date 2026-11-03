@@ -1,6 +1,5 @@
 import { ArrowLeft, CalendarCheck, Repeat, Save, Send } from 'lucide-react'
 import { type FormEvent, useEffect, useId, useState } from 'react'
-import { IS_DEMO } from '../../config'
 import type { BookingDraft } from '../../context/appContext'
 import { useApp } from '../../hooks/useApp'
 import { useSeriesPreview } from '../../hooks/useSeriesPreview'
@@ -451,9 +450,7 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
         {orgs.length === 0 ? (
           <Alert tone="warning">
             {currentUser.name} er ikke medlem av noen organisasjon og kan ikke booke rom.{' '}
-            {IS_DEMO
-              ? 'Bytt til en organisasjonsbruker øverst til høyre for å teste booking.'
-              : 'Be en administrator om å legge deg til i en organisasjon.'}
+            Be en administrator om å legge deg til i en organisasjon.
           </Alert>
         ) : (
           <Field

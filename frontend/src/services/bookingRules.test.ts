@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { combineEnd } from '../lib/dates'
 import type { AppData, Booking, Room, User } from '../types'
-import { canChangeBooking, evaluateBooking, evaluateEdit, isExpiredRequest, seriesOccurrences } from './bookingRules'
+import { canChangeBooking, evaluateBooking, evaluateEdit, isExpiredRequest } from './bookingRules'
 
 const NOW = new Date('2030-01-01T10:00:00Z')
 const HOUR = 3_600_000
@@ -135,38 +135,6 @@ describe('bookingRules', () => {
       expect(evaluateEdit(data(), user, started, edit(started), NOW)).toMatchObject({ code: 'INVALID_STATE' })
       const cancelled = booking({ status: 'CANCELLED' })
       expect(evaluateEdit(data(), user, cancelled, edit(cancelled), NOW)).toMatchObject({ code: 'INVALID_STATE' })
-    })
-  })
-
-  describe('weekly series', () => {
-    const first = { start: at(24), end: at(25) }
-
-    it('repeats every n weeks up to and including the end date, in local time', () => {
-      const local = new Date(first.start)
-      const until = new Date(local)
-      until.setDate(until.getDate() + 28)
-      const untilDate = `${until.getFullYear()}-${String(until.getMonth() + 1).padStart(2, '0')}-${String(until.getDate()).padStart(2, '0')}`
-
-      const weekly = seriesOccurrences(first, { intervalWeeks: 1, until: untilDate }, NOW)
-      expect(weekly.ok && weekly.slots).toHaveLength(5)
-      const biweekly = seriesOccurrences(first, { intervalWeeks: 2, until: untilDate }, NOW)
-      expect(biweekly.ok && biweekly.slots.map((s) => new Date(s.start).getHours())).toEqual([
-        local.getHours(),
-        local.getHours(),
-        local.getHours(),
-      ])
-    })
-
-    it('needs at least two and at most 52 occurrences within 180 days', () => {
-      expect(seriesOccurrences(first, { intervalWeeks: 1, until: first.start.slice(0, 10) }, NOW)).toMatchObject({
-        code: 'VALIDATION',
-      })
-      expect(seriesOccurrences(first, { intervalWeeks: 1, until: '2031-12-31' }, NOW)).toMatchObject({
-        code: 'RULE_VIOLATION',
-      })
-      expect(seriesOccurrences(first, { intervalWeeks: 4, until: '2030-12-31' }, NOW)).toMatchObject({
-        code: 'RULE_VIOLATION',
-      })
     })
   })
 })

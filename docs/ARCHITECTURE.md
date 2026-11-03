@@ -95,9 +95,9 @@ Integrity in the schema:
 
 ## 8. Frontend
 
-- **Two data modes, chosen at build time** with `VITE_DATA_MODE`. `api` talks to the backend; `demo` is a standalone build with mock users and data in localStorage and a simulated user switcher. The UI only uses the `DataSource` interface; `IS_DEMO` guards keep demo code out of API builds, and `vite.config.ts` refuses a production build that isn't API mode.
-- **Business rules** for live feedback are pure functions in `bookingRules.ts`. In demo mode, `bookingService.ts` enforces them over localStorage. In API mode, the server's answer is what counts.
-- **Loading (API mode).** `AppProvider` loads the signed-in user, rooms, organizations, the calendar's visible range (at most 62 days), the user's own bookings, invitations, and for SYSTEM_ADMINs the request queue. It loads again when the calendar moves outside the loaded range and after every change. Names of other people come with the bookings. The management pages (users, organizations, rooms, members) load their own data through `adminApi.ts`.
+- **One data source.** The UI only uses the `DataSource` interface, implemented by `apiDataSource.ts` over the backend API.
+- **Business rules** for live feedback are pure functions in `bookingRules.ts`. The server's answer is what counts.
+- **Loading.** `AppProvider` loads the signed-in user, rooms, organizations, the calendar's visible range (at most 62 days), the user's own bookings, invitations, and for SYSTEM_ADMINs the request queue. It loads again when the calendar moves outside the loaded range and after every change. Names of other people come with the bookings. The management pages (users, organizations, rooms, members) load their own data through `adminApi.ts`.
 - **Notifications** about decisions and cancellations are derived from the loaded bookings. "Merk alle som lest" is remembered per browser in localStorage.
 
 ## 9. Tests

@@ -1,12 +1,10 @@
-import { CalendarDays, Check, ListChecks, LogIn, Plus, RotateCcw, ShieldCheck, Users } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { CalendarDays, Check, ListChecks, Plus, ShieldCheck, Users } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { IS_DEMO, LOGIN_URL } from '../../config'
 import { useApp } from '../../hooks/useApp'
 import { cn } from '../../lib/cn'
 import { isExpiredRequest } from '../../services/bookingRules'
 import { Button } from '../ui/Button'
-import { ConfirmDialog } from '../ui/ConfirmDialog'
 
 function NavItem({ to, icon, label, count, onNavigate }: { to: string; icon: ReactNode; label: string; count?: number; onNavigate?: () => void }) {
   return (
@@ -34,7 +32,6 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const app = useApp()
   const { data, currentUser, visibleRoomIds } = app
   const { pathname } = useLocation()
-  const [confirmReset, setConfirmReset] = useState(false)
 
   const open = data.bookings.filter((b) => b.status === 'PENDING' && !isExpiredRequest(b))
   const pendingCount = open.length
@@ -60,7 +57,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         {currentUser.role === 'ADMIN' && (
           <NavItem to="/admin" icon={<ShieldCheck />} label="Administrasjon" count={pendingCount} onNavigate={onNavigate} />
         )}
-        {!IS_DEMO && (currentUser.orgAdminOrganizationIds?.length ?? 0) > 0 && (
+        {(currentUser.orgAdminOrganizationIds?.length ?? 0) > 0 && (
           <NavItem to="/medlemmer" icon={<Users />} label="Medlemmer" onNavigate={onNavigate} />
         )}
       </nav>
@@ -122,43 +119,6 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             </p>
           </div>
         </section>
-      )}
-
-      {IS_DEMO && (
-      <div className="mt-auto space-y-2 border-t border-slate-100 px-3 pt-4">
-        <p className="text-xs leading-relaxed text-slate-500">
-          Prototype. Data lagres kun i denne nettleseren, og innlogging og tilgangskontroll er simulert.
-        </p>
-        <button
-          type="button"
-          onClick={() => setConfirmReset(true)}
-          className="flex items-center gap-2 text-xs font-medium text-slate-600 hover:text-slate-900"
-        >
-          <RotateCcw className="size-3.5" /> Tilbakestill demodata
-        </button>
-        {LOGIN_URL && (
-          <a href={LOGIN_URL} className="flex items-center gap-2 text-xs font-medium text-slate-600 hover:text-slate-900">
-            <LogIn className="size-3.5" /> Til innlogging
-          </a>
-        )}
-      </div>
-      )}
-
-      {IS_DEMO && confirmReset && (
-        <ConfirmDialog
-          title="Tilbakestille demodata?"
-          confirmLabel="Tilbakestill"
-          destructive
-          onClose={() => setConfirmReset(false)}
-          onConfirm={async () => {
-            await app.resetDemoData()
-            setConfirmReset(false)
-            onNavigate?.()
-            app.notify('Demodata er tilbakestilt.', 'info')
-          }}
-        >
-          Alle bookinger og søknader du har laget forsvinner, og eksempeldataene lastes inn på nytt.
-        </ConfirmDialog>
       )}
     </div>
   )

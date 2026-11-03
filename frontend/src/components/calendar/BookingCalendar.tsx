@@ -17,7 +17,7 @@ import { Hourglass, Moon, Repeat } from 'lucide-react'
 import { type Ref, useMemo } from 'react'
 import { cn } from '../../lib/cn'
 import { tint } from '../../lib/color'
-import { crossesMidnight } from '../../lib/dates'
+import { crossesMidnight, formatTimeRange } from '../../lib/dates'
 import { NightBadge } from '../booking/badges'
 import { roomInfo } from '../../lib/rooms'
 import type { Booking, Organization, Room } from '../../types'
@@ -203,7 +203,10 @@ function renderEvent(arg: EventContentArg) {
   if (!booking) return <span className="text-xs">{arg.timeText}</span>
   const pending = booking.status === 'PENDING'
   const night = crossesMidnight(booking.start, booking.end)
-  const label = `${booking.title}, ${arg.timeText}, ${roomName}${pending ? ', venter på godkjenning' : ''}${booking.seriesId ? ', gjentakende' : ''}${night ? ', nattbooking' : ''}`
+  // The week and day views split a booking past midnight into one part per day, each with only
+  // its own hours. Show the whole booking's time on both.
+  const time = night ? formatTimeRange(booking.start, booking.end) : arg.timeText
+  const label = `${booking.title}, ${time}, ${roomName}${pending ? ', venter på godkjenning' : ''}${booking.seriesId ? ', gjentakende' : ''}${night ? ', nattbooking' : ''}`
 
   if (arg.view.type === 'dayGridMonth') {
     return (
@@ -229,7 +232,7 @@ function renderEvent(arg: EventContentArg) {
           </span>
         )}
       </span>
-      <span className="truncate opacity-90">{arg.timeText}</span>
+      <span className="truncate opacity-90">{time}</span>
       <span className="truncate opacity-85">
         {roomName}
         {organization && ` · ${organization.name}`}

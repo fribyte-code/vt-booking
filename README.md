@@ -19,7 +19,6 @@ Rombookingsystem for Velferdstinget Vest. Organisasjonene booker møterom og lok
 - **Bookingregler:** ingen dobbeltbooking, maks 12 timer per booking og maks 180 dager frem i tid.
 - **Roller:** systemadministrator (brukere, organisasjoner, rom, tilganger og godkjenning) og organisasjonsadministrator (medlemmene i egen organisasjon).
 - **Innlogging** med e-post og passord. Nye brukere får et midlertidig passord som må byttes ved første innlogging.
-- **Demo** med testdata som kjører helt i nettleseren, uten backend.
 
 ## Teknologi
 
@@ -34,7 +33,7 @@ Frontend er en SPA som bygges til statiske filer og serveres av Nginx. All autor
 
 ## Kom i gang lokalt
 
-Krever Docker. `make dev`, `make demo` og `make test` trenger i tillegg Java 21 og Node 22.
+Krever Docker. `make dev` og `make test` trenger i tillegg Java 21 og Node 22.
 
 ```bash
 make dev               # PostgreSQL i Docker, backend og frontend med hot reload → http://localhost:5173
@@ -45,8 +44,7 @@ Databasen starter tom, uten testbrukere eller eksempeldata. Logg inn med adminis
 
 | Kommando | Hva den gjør |
 |---|---|
-| `make dev` | Utvikling med hot reload. Demoen kjører på http://localhost:5174/demo/. |
-| `make demo` | Bare den frittstående demoen, uten backend → http://localhost:5173 |
+| `make dev` | Utvikling med hot reload → http://localhost:5173 |
 | `make up` / `make down` | Hele løsningen i Docker → http://localhost:8088 (bare lokalt, ikke produksjon) |
 | `make test` | Frontend- og backendtester |
 | `make e2e` | Ende-til-ende-test mot en lokal app som kjører (se `frontend/README.md`) |
@@ -75,4 +73,4 @@ Fullstendig veiledning, med reverse proxy, backup, gjenoppretting og konfigurasj
 | [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) | Hva som er avklart med Velferdstinget, og hva som er åpent |
 | [`docs/README.md`](docs/README.md) | Opprinnelig kravspesifikasjon og notater |
 | [`backend/README.md`](backend/README.md) | Oppsett av backend og API-referanse |
-| [`frontend/README.md`](frontend/README.md) | Datamoduser, demo og kjente begrensninger |
+| [`frontend/README.md`](frontend/README.md) | Oppsett, arkitektur og kjente begrensninger |

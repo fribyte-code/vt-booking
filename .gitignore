@@ -10,11 +10,6 @@ CLAUDE.md
 *.key
 # The production template has no values in it, so it is committed.
 !.env.example
-# The frontend's .env files only select the data mode (no secrets), so they are committed.
-!frontend/.env
-!frontend/.env.api
-!frontend/.env.demo
-!frontend/.env.production
 
 # ── Build output and dependencies ──
 node_modules/

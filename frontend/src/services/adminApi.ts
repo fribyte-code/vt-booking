@@ -2,8 +2,7 @@ import type { BookingStatus, Permission } from '../types'
 import { createApiClient } from './apiClient'
 
 /**
- * User, organization and room management against the Spring Boot API. API mode only: the
- * management pages that use it are not rendered in the demo build, and the server enforces
+ * User, organization and room management against the Spring Boot API. The server enforces
  * every permission (SYSTEM_ADMIN for /api/admin, ORG_ADMIN of the organization for members).
  */
 

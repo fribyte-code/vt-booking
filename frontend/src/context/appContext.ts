@@ -36,17 +36,15 @@ export interface Toast {
 export interface AppContextValue {
   data: AppData
   currentUser: User
-  /** Demo mode only: switch the simulated user. */
-  setCurrentUserId: (id: string) => void
-  /** API mode only: end the session. */
+  /** End the session. */
   logout: () => Promise<void>
-  /** API mode only: change the signed-in user's password. */
-  changePassword?: (currentPassword: string, newPassword: string) => Promise<void>
+  /** Change the signed-in user's password. */
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>
   /** Load the data again, e.g. after an administrator changed rooms or organizations. */
   reload: () => void
   /** True while data is being (re)loaded, e.g. after navigating the calendar. */
   loading: boolean
-  /** The calendar's visible period, so API mode can load bookings for it. */
+  /** The calendar's visible period, so bookings can be loaded for it. */
   setVisibleRange: (range: DateRange) => void
 
   room: (id: string) => Room | undefined
@@ -76,11 +74,10 @@ export interface AppContextValue {
   approveSeries: (seriesId: string, comment?: string) => Promise<SeriesApproved>
   rejectSeries: (seriesId: string, reason: string) => Promise<Booking[]>
 
-  /** API mode only: answer an invitation to an organization. Accepting reloads the data with the new membership. */
-  acceptInvitation?: (id: string) => Promise<void>
-  declineInvitation?: (id: string) => Promise<void>
+  /** Answer an invitation to an organization. Accepting reloads the data with the new membership. */
+  acceptInvitation: (id: string) => Promise<void>
+  declineInvitation: (id: string) => Promise<void>
   markDecisionsSeen: () => Promise<void>
-  resetDemoData: () => Promise<void>
 
   visibleRoomIds: string[]
   toggleRoom: (id: string) => void
