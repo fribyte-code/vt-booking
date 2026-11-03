@@ -319,3 +319,21 @@ function addLocalDays(date: Date, days: number): Date {
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const localDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
+/** Which requests to list. An empty list doesn't limit that category. */
+export interface RequestFilter {
+  organizationIds: string[]
+  roomIds: string[]
+}
+
+export const NO_REQUEST_FILTER: RequestFilter = { organizationIds: [], roomIds: [] }
+
+export const hasRequestFilter = (f: RequestFilter) => f.organizationIds.length + f.roomIds.length > 0
+
+/** Any of the chosen organizations AND any of the chosen rooms. */
+export function matchesRequestFilter(b: Pick<Booking, 'organizationId' | 'roomId'>, f: RequestFilter): boolean {
+  return (
+    (f.organizationIds.length === 0 || f.organizationIds.includes(b.organizationId)) &&
+    (f.roomIds.length === 0 || f.roomIds.includes(b.roomId))
+  )
+}

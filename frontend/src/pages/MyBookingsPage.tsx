@@ -1,12 +1,21 @@
-import { CalendarX2, Pencil, Plus } from 'lucide-react'
+import { CalendarX2, Pencil, Plus, SearchX } from 'lucide-react'
 import { useState } from 'react'
+import { RequestFilters } from '../components/admin/RequestFilters'
 import { BookingListItem, EmptyState } from '../components/booking/BookingListItem'
 import { CancelBookingDialog } from '../components/booking/CancelBookingDialog'
 import { Button } from '../components/ui/Button'
 import { Tabs } from '../components/ui/Tabs'
 import { useApp } from '../hooks/useApp'
 import { isFuture } from '../lib/dates'
-import { canChangeBooking, isExpiredRequest, isOpenForChanges } from '../services/bookingRules'
+import {
+  canChangeBooking,
+  hasRequestFilter,
+  isExpiredRequest,
+  isOpenForChanges,
+  matchesRequestFilter,
+  NO_REQUEST_FILTER,
+  type RequestFilter,
+} from '../services/bookingRules'
 import type { Booking } from '../types'
 
 type TabId = 'upcoming' | 'pending' | 'rejected' | 'past'
@@ -22,6 +31,8 @@ export function MyBookingsPage() {
   const app = useApp()
   const [tab, setTab] = useState<TabId>('upcoming')
   const [cancelling, setCancelling] = useState<Booking | null>(null)
+  // One filter for all the tabs, so it stays when switching between them.
+  const [filter, setFilter] = useState<RequestFilter>(NO_REQUEST_FILTER)
 
   const mine = app.data.bookings.filter((b) => b.requestedById === app.currentUser.id)
   const byStart = (a: Booking, b: Booking) => a.start.localeCompare(b.start)
@@ -35,6 +46,10 @@ export function MyBookingsPage() {
       )
       .sort((a, b) => byStart(b, a)),
   }
+
+  const shown = groups[tab].filter((b) => matchesRequestFilter(b, filter))
+  const noMatches = groups[tab].length > 0 && shown.length === 0
+  const myOrganizations = app.data.organizations.filter((o) => app.currentUser.organizationIds.includes(o.id))
 
   const orgNames = app.currentUser.organizationIds.map((id) => app.organization(id)?.name).join(', ')
 
@@ -67,13 +82,33 @@ export function MyBookingsPage() {
         />
 
         <div className="mt-5">
-          {groups[tab].length === 0 ? (
+          {groups[tab].length > 0 && (
+            <RequestFilters
+              filter={filter}
+              onChange={setFilter}
+              organizations={myOrganizations}
+              rooms={app.data.rooms}
+              shown={shown.length}
+              total={groups[tab].length}
+              noun={{ one: 'booking', many: 'bookinger' }}
+            />
+          )}
+          {noMatches && hasRequestFilter(filter) ? (
+            <EmptyState icon={<SearchX />} title="Ingen bookinger matcher filtreringen">
+              Prøv å fjerne noen av filtrene.
+              <div className="mt-3">
+                <Button size="sm" onClick={() => setFilter(NO_REQUEST_FILTER)}>
+                  Nullstill filtre
+                </Button>
+              </div>
+            </EmptyState>
+          ) : groups[tab].length === 0 ? (
             <EmptyState icon={<CalendarX2 />} title={emptyText[tab]}>
               {tab === 'upcoming' && 'Velg et tidsrom i kalenderen eller trykk «Ny booking» for å booke et rom.'}
             </EmptyState>
           ) : (
             <ul className="space-y-3">
-              {groups[tab].map((b) => {
+              {shown.map((b) => {
                 const changeable = canChangeBooking(app.currentUser, b) && isOpenForChanges(b)
                 return (
                   <BookingListItem

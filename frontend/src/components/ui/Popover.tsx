@@ -5,9 +5,11 @@ interface PopoverProps {
   trigger: (props: { open: boolean; toggle: () => void }) => ReactNode
   children: (close: () => void) => ReactNode
   className?: string
+  /** Which edge of the trigger the panel lines up with. */
+  align?: 'left' | 'right'
 }
 
-export function Popover({ trigger, children, className }: PopoverProps) {
+export function Popover({ trigger, children, className, align = 'right' }: PopoverProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -33,7 +35,8 @@ export function Popover({ trigger, children, className }: PopoverProps) {
       {open && (
         <div
           className={cn(
-            'absolute top-full right-0 z-40 mt-2 overflow-hidden rounded-xl bg-white shadow-xl ring-1 ring-slate-200',
+            'absolute top-full z-40 mt-2 overflow-hidden rounded-xl bg-white shadow-xl ring-1 ring-slate-200',
+            align === 'right' ? 'right-0' : 'left-0',
             className,
           )}
         >

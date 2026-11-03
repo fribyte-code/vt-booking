@@ -1,6 +1,7 @@
-import { Check, ChevronDown, Inbox, Repeat, ShieldAlert, User, X } from 'lucide-react'
+import { Check, ChevronDown, Inbox, Repeat, SearchX, ShieldAlert, User, X } from 'lucide-react'
 import { lazy, Suspense, useState } from 'react'
 import { Chip } from '../components/admin/Chip'
+import { RequestFilters } from '../components/admin/RequestFilters'
 import { PermissionBadge, RoomDot } from '../components/booking/badges'
 import { BookingListItem, EmptyState } from '../components/booking/BookingListItem'
 import { DecisionDialog } from '../components/booking/DecisionDialog'
@@ -11,7 +12,15 @@ import { Tabs } from '../components/ui/Tabs'
 import { useApp } from '../hooks/useApp'
 import { cn } from '../lib/cn'
 import { formatDate, formatDateTime, formatShortDate, formatTimeRange } from '../lib/dates'
-import { findConflicts, getPermission, isExpiredRequest } from '../services/bookingRules'
+import {
+  findConflicts,
+  getPermission,
+  hasRequestFilter,
+  isExpiredRequest,
+  matchesRequestFilter,
+  NO_REQUEST_FILTER,
+  type RequestFilter,
+} from '../services/bookingRules'
 import type { Booking } from '../types'
 import { IS_DEMO } from '../config'
 
@@ -27,6 +36,8 @@ type TabId = 'pending' | 'processed' | 'access' | 'users' | 'organizations' | 'r
 export function AdminPage() {
   const app = useApp()
   const [tab, setTab] = useState<TabId>('pending')
+  // One filter for both request lists, so it stays when switching between them.
+  const [filter, setFilter] = useState<RequestFilter>(NO_REQUEST_FILTER)
 
   if (app.currentUser.role !== 'ADMIN') {
     return (
@@ -44,6 +55,10 @@ export function AdminPage() {
   const processed = app.data.bookings
     .filter((b) => b.requiresApproval && b.decidedAt)
     .sort((a, b) => (b.decidedAt ?? '').localeCompare(a.decidedAt ?? ''))
+
+  const requests = tab === 'pending' ? pending : processed
+  const matching = requests.filter((b) => matchesRequestFilter(b, filter))
+  const noMatches = requests.length > 0 && matching.length === 0
 
   return (
     <div className="h-full overflow-y-auto">
@@ -75,8 +90,28 @@ export function AdminPage() {
         />
 
         <div className="mt-5">
-          {tab === 'pending' && <PendingList bookings={pending} />}
-          {tab === 'processed' && <ProcessedList bookings={processed} />}
+          {(tab === 'pending' || tab === 'processed') && requests.length > 0 && (
+            <RequestFilters
+              filter={filter}
+              onChange={setFilter}
+              organizations={app.data.organizations}
+              rooms={app.data.rooms}
+              shown={matching.length}
+              total={requests.length}
+            />
+          )}
+          {(tab === 'pending' || tab === 'processed') && noMatches && hasRequestFilter(filter) && (
+            <EmptyState icon={<SearchX />} title="Ingen søknader matcher filtreringen">
+              Prøv å fjerne noen av filtrene.
+              <div className="mt-3">
+                <Button size="sm" onClick={() => setFilter(NO_REQUEST_FILTER)}>
+                  Nullstill filtre
+                </Button>
+              </div>
+            </EmptyState>
+          )}
+          {tab === 'pending' && !noMatches && <PendingList bookings={matching} />}
+          {tab === 'processed' && !noMatches && <ProcessedList bookings={matching} />}
           {tab === 'access' && <AccessOverview />}
           {!IS_DEMO && (
             <Suspense fallback={<p className="text-sm text-slate-500">Laster …</p>}>
