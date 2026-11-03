@@ -1,9 +1,9 @@
 import { Building2, Clock, Repeat } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useApp } from '../../hooks/useApp'
-import { formatTimeRange } from '../../lib/dates'
+import { crossesMidnight, formatTimeRange } from '../../lib/dates'
 import type { Booking } from '../../types'
-import { RoomDot, StatusBadge } from './badges'
+import { NightBadge, RoomDot, StatusBadge } from './badges'
 
 interface BookingListItemProps {
   booking: Booking
@@ -40,6 +40,7 @@ export function BookingListItem({ booking, meta, actions, children }: BookingLis
               {booking.title}
             </button>
             <StatusBadge booking={booking} />
+            {crossesMidnight(booking.start, booking.end) && <NightBadge />}
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600 [&_svg]:size-3.5 [&_svg]:text-slate-400">
             <span className="flex items-center gap-1.5">

@@ -10,7 +10,7 @@ How to run the booking system on a server with Docker Compose, behind your own H
 | `backend` | The Spring Boot API | Only `frontend` |
 | `db` | PostgreSQL 18, data in the Docker volume `vt-booking-prod_pgdata` | Only `backend` |
 
-All three restart automatically (`unless-stopped`) and have healthchecks. The demo and the development settings are not included.
+All three restart automatically (`unless-stopped`) and have healthchecks. The development settings are not included.
 
 ## Requirements
 

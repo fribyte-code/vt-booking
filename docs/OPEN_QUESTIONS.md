@@ -31,6 +31,7 @@ Mapping to the README's "Må avklares med Velferdstinget":
 | Q-17 | Email | None. Notifications are in-app only; "read" is remembered per browser. |
 | Q-21 | Session lifetime | 8 hours idle. The 7-day absolute limit decided earlier is **not** implemented. |
 | Q-25 | Language | Norwegian bokmål only |
+| Q-11 | Crossing midnight | Allowed (still max 12 hours). An end time at or before the start time means the next day. Such bookings get a "Nattbooking" badge; nothing is stored for it and nobody is notified. |
 
 ## B. Still open
 
@@ -46,7 +47,6 @@ Mapping to the README's "Må avklares med Velferdstinget":
 ### Can be decided from pilot use
 
 - **Q-10 Quotas.** Built: at most 12 hours per booking and 180 days ahead. Not built: limits on the number of pending requests or future bookings per user or organization.
-- **Q-11 Crossing midnight.** The booking form doesn't allow it (an end time of 00:00 means the end of the day); the API allows any booking up to 12 hours. Are overnight events needed?
 - **Q-13 Fixed reservations ("faste tider").** Today an administrator can only create a weekly series as a member of the organization. Are admin-made reservations on behalf of an organization, or room blocks for maintenance, needed?
 - **Q-23 Attendee count.** Rooms have a capacity, but bookings have no attendee count.
 - **Q-29 Membership renewal.** Memberships don't expire. Should they, for example at the end of a board term?

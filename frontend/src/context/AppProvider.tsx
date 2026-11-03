@@ -60,7 +60,7 @@ const listSeries: AppContextValue['listSeries'] = (seriesId) => dataSource.serie
 
 const isUnauthenticated = (err: unknown) => err instanceof BookingError && err.code === 'UNAUTHENTICATED'
 const needsPasswordChange = (err: unknown) => err instanceof BookingError && err.code === 'PASSWORD_CHANGE_REQUIRED'
-const passwordChangeRequired = () => dataSource.auth?.passwordChangeRequired() ?? false
+const passwordChangeRequired = () => dataSource.auth.passwordChangeRequired()
 
 function Centered({ children }: { children: ReactNode }) {
   return <div className="flex h-dvh flex-col items-center justify-center gap-3 px-4 text-center text-sm text-slate-500">{children}</div>
@@ -69,7 +69,7 @@ function Centered({ children }: { children: ReactNode }) {
 export function AppProvider({ children }: { children: ReactNode }) {
   // undefined: checking the session. null: a login is needed.
   const [userId, setUserId] = useState<string | null | undefined>(undefined)
-  // API mode: logged in with a temporary password, which must be replaced before anything else.
+  // Logged in with a temporary password, which must be replaced before anything else.
   const [mustChangePassword, setMustChangePassword] = useState(false)
   const [data, setData] = useState<AppData | null>(null)
   const [range, setRange] = useState<DateRange>(initialRange)
@@ -248,29 +248,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return {
       data,
       currentUser,
-      setCurrentUserId: (id) => {
-        dataSource.demo?.switchUser(id)
-        setUserId(id)
-        setBookingDraft(null)
-        setDetailsBookingId(null)
-      },
       logout: async () => {
         try {
-          await dataSource.auth?.logout()
+          await dataSource.auth.logout()
         } finally {
           endSession()
         }
       },
-      changePassword: dataSource.auth
-        ? async (currentPassword, newPassword) => {
-            try {
-              await dataSource.auth!.changePassword(currentPassword, newPassword)
-            } catch (err) {
-              if (isUnauthenticated(err)) endSession()
-              throw err
-            }
-          }
-        : undefined,
+      changePassword: async (currentPassword, newPassword) => {
+        try {
+          await dataSource.auth.changePassword(currentPassword, newPassword)
+        } catch (err) {
+          if (isUnauthenticated(err)) endSession()
+          throw err
+        }
+      },
       reload: () => setReloadKey((k) => k + 1),
       loading,
       setVisibleRange: (next) => setRange((prev) => (covers(prev, next) ? prev : next)),
@@ -301,15 +293,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       approveSeries: (seriesId, comment) => mutate(() => dataSource.series.approve(seriesId, comment)),
       rejectSeries: (seriesId, reason) => mutate(() => dataSource.series.reject(seriesId, reason)),
 
-      acceptInvitation: dataSource.invitations
-        ? (id) => mutate(() => dataSource.invitations!.accept(id))
-        : undefined,
-      declineInvitation: dataSource.invitations
-        ? (id) => mutate(() => dataSource.invitations!.decline(id))
-        : undefined,
+      acceptInvitation: (id) => mutate(() => dataSource.invitations.accept(id)),
+      declineInvitation: (id) => mutate(() => dataSource.invitations.decline(id)),
       markDecisionsSeen: async () => {
         await dataSource.markDecisionsSeen().catch(handleError)
-        // Both data sources mark exactly the loaded decisions and cancellations of the user's own
+        // The API marks exactly the loaded decisions and cancellations of the user's own
         // bookings as read, so the loaded data is updated in place instead of loading it again.
         setData((d) =>
           d && {
@@ -319,12 +307,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ),
           },
         )
-      },
-      resetDemoData: async () => {
-        await dataSource.demo?.reset()
-        await reloadAndWait()
-        setBookingDraft(null)
-        setDetailsBookingId(null)
       },
 
       visibleRoomIds: data.rooms.map((r) => r.id).filter((id) => !prefs.hiddenRoomIds.includes(id)),
@@ -353,7 +335,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [data, userId, loading, prefs, bookingDraft, detailsBookingId, toasts, notify, dismissToast, endSession, updatePrefs, reloadAndWait])
 
-  if (userId && mustChangePassword && dataSource.auth) {
+  if (userId && mustChangePassword) {
     const { auth } = dataSource
     return (
       <ChangePasswordPage
@@ -369,7 +351,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     )
   }
 
-  if (userId === null && dataSource.auth) {
+  if (userId === null) {
     const { login } = dataSource.auth
     return (
       <LoginPage

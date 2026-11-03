@@ -11,20 +11,15 @@ import type {
   UpdateBookingInput,
 } from '../types'
 
-/** The calendar's visible period. The API source loads bookings for it; the demo source has everything. */
+/** The calendar's visible period. Bookings are loaded for it. */
 export interface DateRange {
   start: string
   end: string
 }
 
 /**
- * Where the app's data comes from. The UI only talks to this interface, so the
- * same components run on either implementation:
- *
- * - `demoDataSource.ts`: mock users and data in localStorage, with a simulated user switcher.
- * - `apiDataSource.ts`: the Spring Boot API, with a session cookie and CSRF.
- *
- * Which one is used is fixed at build time by `VITE_DATA_MODE` (see `index.ts`).
+ * Where the app's data comes from: the Spring Boot API, with a session cookie and CSRF
+ * (`apiDataSource.ts`). The UI only talks to this interface.
  * Methods throw `BookingError`; code `UNAUTHENTICATED` means the session has ended.
  */
 export interface DataSource {
@@ -62,8 +57,8 @@ export interface DataSource {
     reject(seriesId: string, reason: string): Promise<Booking[]>
   }
 
-  /** Real login and logout. API mode only. */
-  auth?: {
+  /** Login and logout. */
+  auth: {
     login(email: string, password: string): Promise<void>
     logout(): Promise<void>
     /** True when the last session check found a temporary password that must be changed first. */
@@ -71,15 +66,9 @@ export interface DataSource {
     changePassword(currentPassword: string, newPassword: string): Promise<void>
   }
 
-  /** Answering invitations to organizations (listed in `AppData.invitations`). API mode only. */
-  invitations?: {
+  /** Answering invitations to organizations (listed in `AppData.invitations`). */
+  invitations: {
     accept(id: string): Promise<void>
     decline(id: string): Promise<void>
-  }
-
-  /** Simulated users and resettable data. Demo mode only. */
-  demo?: {
-    switchUser(userId: string): void
-    reset(): Promise<void>
   }
 }

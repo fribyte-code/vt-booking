@@ -8,7 +8,7 @@ import { Modal } from '../ui/Modal'
 import { Popover } from '../ui/Popover'
 import { Avatar } from './Avatar'
 
-/** API mode: the signed-in user, with logout. */
+/** The signed-in user, with logout. */
 export function AccountMenu() {
   const app = useApp()
   const { currentUser } = app
@@ -47,19 +47,17 @@ export function AccountMenu() {
             <p className="truncate text-xs text-slate-500">{currentUser.email}</p>
             <p className="mt-1 truncate text-xs text-slate-500">{description}</p>
           </div>
-          {app.changePassword && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                close()
-                setChangingPassword(true)
-              }}
-              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
-            >
-              <KeyRound className="size-4" /> Bytt passord
-            </button>
-          )}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              close()
+              setChangingPassword(true)
+            }}
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            <KeyRound className="size-4" /> Bytt passord
+          </button>
           <button
             type="button"
             role="menuitem"
@@ -80,7 +78,7 @@ export function AccountMenu() {
         </div>
       )}
     </Popover>
-    {changingPassword && app.changePassword && (
+    {changingPassword && (
       <Modal title="Bytt passord" onClose={() => setChangingPassword(false)} size="sm">
         <ChangePasswordForm
           submitLabel="Bytt passord"
@@ -90,7 +88,7 @@ export function AccountMenu() {
             </Button>
           }
           onSubmit={async (currentPassword, newPassword) => {
-            await app.changePassword!(currentPassword, newPassword)
+            await app.changePassword(currentPassword, newPassword)
             setChangingPassword(false)
             app.notify('Passordet er byttet. Andre innlogginger er logget ut.')
           }}

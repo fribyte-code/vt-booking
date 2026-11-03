@@ -1,4 +1,4 @@
-import type { AppData, Booking, BookingStatus, CreateBookingInput, Permission, Recurrence, Room, TimeSlot, UpdateBookingInput, User } from '../types'
+import type { AppData, Booking, BookingStatus, CreateBookingInput, Permission, Room, TimeSlot, UpdateBookingInput, User } from '../types'
 
 /**
  * Pure booking rules, shared by the service layer (enforcement) and the UI
@@ -24,11 +24,9 @@ export type RuleResult =
   | { ok: true; permission: Exclude<Permission, 'NONE'> }
   | { ok: false; code: ErrorCode; message: string; conflicts?: Booking[] }
 
-/** Same limits as the backend's BookingService and BookingSeriesService. */
+/** Same limits as the backend's BookingService. */
 export const MAX_DURATION_HOURS = 12
 export const MAX_ADVANCE_DAYS = 180
-export const MIN_SERIES_OCCURRENCES = 2
-export const MAX_SERIES_OCCURRENCES = 52
 
 type Failure = Extract<RuleResult, { ok: false }>
 
@@ -257,65 +255,3 @@ export function evaluateEdit(
     losesApproval: booking.status === 'APPROVED' && status === 'PENDING',
   }
 }
-
-// ── Weekly series ──────────────────────────────────────────────
-
-/**
- * The occurrences of a weekly series in local time, so 18:00–20:00 stays 18:00–20:00 across
- * daylight saving changes (like the backend's `BookingSeriesService.occurrences`). Each must also
- * pass the single-booking time rules.
- */
-export function seriesOccurrences(
-  first: TimeSlot,
-  recurrence: Recurrence,
-  now: Date = new Date(),
-): { ok: true; slots: TimeSlot[] } | Failure {
-  const start = new Date(first.start)
-  const end = new Date(first.end)
-  const step = recurrence.intervalWeeks
-  if (!Number.isInteger(step) || step < 1 || step > 4) {
-    return { ok: false, code: 'VALIDATION', message: 'Velg hvor ofte bookingen skal gjentas.' }
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(recurrence.until) || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return { ok: false, code: 'VALIDATION', message: 'Ugyldig dato eller klokkeslett.' }
-  }
-
-  const slots: TimeSlot[] = []
-  for (let i = 0; ; i++) {
-    const s = addLocalDays(start, i * 7 * step)
-    if (localDate(s) > recurrence.until) break
-    if (slots.length === MAX_SERIES_OCCURRENCES) {
-      return {
-        ok: false,
-        code: 'RULE_VIOLATION',
-        message: `En serie kan ha maks ${MAX_SERIES_OCCURRENCES} forekomster. Velg en tidligere sluttdato.`,
-      }
-    }
-    slots.push({ start: s.toISOString(), end: addLocalDays(end, i * 7 * step).toISOString() })
-  }
-  if (slots.length < MIN_SERIES_OCCURRENCES) {
-    return { ok: false, code: 'VALIDATION', message: 'En serie må ha minst to forekomster. Velg en senere sluttdato.' }
-  }
-  const last = Date.parse(slots[slots.length - 1].start)
-  if (last > now.getTime() + MAX_ADVANCE_DAYS * 24 * HOUR) {
-    return {
-      ok: false,
-      code: 'RULE_VIOLATION',
-      message: `Serien går for langt frem i tid. Du kan booke maks ${MAX_ADVANCE_DAYS} dager frem.`,
-    }
-  }
-  for (const slot of slots) {
-    const invalid = checkTimes(slot, now)
-    if (invalid) return invalid
-  }
-  return { ok: true, slots }
-}
-
-function addLocalDays(date: Date, days: number): Date {
-  const d = new Date(date)
-  d.setDate(d.getDate() + days)
-  return d
-}
-
-const pad = (n: number) => String(n).padStart(2, '0')
-const localDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`

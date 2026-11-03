@@ -1,7 +1,6 @@
 import { CalendarRange, Menu } from 'lucide-react'
 import { useState } from 'react'
 import { Link, Outlet } from 'react-router-dom'
-import { IS_DEMO } from '../../config'
 import { useApp } from '../../hooks/useApp'
 import { BookingDetailsDialog } from '../booking/BookingDetailsDialog'
 import { BookingDialog } from '../booking/BookingDialog'
@@ -11,7 +10,6 @@ import { AccountMenu } from './AccountMenu'
 import { InvitationBanner } from './InvitationBanner'
 import { NotificationsMenu } from './NotificationsMenu'
 import { Sidebar } from './Sidebar'
-import { UserSwitcher } from './UserSwitcher'
 
 export function AppLayout() {
   const app = useApp()
@@ -33,13 +31,8 @@ export function AppLayout() {
           </span>
         </Link>
         <div className="flex-1" />
-        {IS_DEMO && (
-          <span className="mr-1 hidden rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-200 ring-inset sm:inline">
-            Demo
-          </span>
-        )}
         <NotificationsMenu />
-        {IS_DEMO ? <UserSwitcher /> : <AccountMenu />}
+        <AccountMenu />
       </header>
 
       <div className="flex min-h-0 flex-1">

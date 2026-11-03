@@ -20,10 +20,7 @@ services:
     # No published port: the browser reaches the API through Nginx only.
 
   frontend:
-    build:
-      context: frontend
-      args:
-        WITH_DEMO: "true" # also serve the demo at /demo/, linked from the login page
+    build: frontend
     ports:
       - "127.0.0.1:${APP_PORT:-8088}:80"
     depends_on:

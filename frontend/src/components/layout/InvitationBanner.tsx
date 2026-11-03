@@ -11,7 +11,6 @@ const roleText = (inv: Invitation) => (inv.role === 'ORG_ADMIN' ? ' som organisa
 export function InvitationActions({ invitation, onDone }: { invitation: Invitation; onDone?: () => void }) {
   const app = useApp()
   const [busy, setBusy] = useState(false)
-  if (!app.acceptInvitation || !app.declineInvitation) return null
   const { acceptInvitation, declineInvitation } = app
 
   const answer = async (accept: boolean) => {
@@ -53,11 +52,11 @@ export function InvitationText({ invitation: inv }: { invitation: Invitation }) 
   )
 }
 
-/** API mode: pending invitations, shown above every page until they are answered. */
+/** Pending invitations, shown above every page until they are answered. */
 export function InvitationBanner() {
   const app = useApp()
   const invitations = app.data.invitations ?? []
-  if (invitations.length === 0 || !app.acceptInvitation) return null
+  if (invitations.length === 0) return null
 
   return (
     <div className="shrink-0 space-y-2 border-b border-blue-100 bg-blue-50 px-3 py-2.5 sm:px-4">

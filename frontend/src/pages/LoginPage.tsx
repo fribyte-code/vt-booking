@@ -1,12 +1,11 @@
-import { CalendarRange, MonitorPlay } from 'lucide-react'
+import { CalendarRange } from 'lucide-react'
 import { type FormEvent, useId, useState } from 'react'
 import { Button } from '../components/ui/Button'
-import { DEMO_URL } from '../config'
 import { Alert, Field, Input } from '../components/ui/fields'
 import { errorMessage } from '../lib/errors'
 
 /**
- * API mode login with email and password. Accounts are created by administrators
+ * Login with email and password. Accounts are created by administrators
  * (the first one with the backend's bootstrap-admin command); there is no sign-up.
  */
 export function LoginPage({ onLogin }: { onLogin: (email: string, password: string) => Promise<void> }) {
@@ -65,18 +64,6 @@ export function LoginPage({ onLogin }: { onLogin: (email: string, password: stri
         <Button type="submit" variant="primary" className="w-full" disabled={busy}>
           {busy ? 'Logger inn …' : 'Logg inn'}
         </Button>
-        {DEMO_URL && (
-          <div className="space-y-2 border-t border-slate-100 pt-4 text-center">
-            {/* A separate demo build with mock data. It never talks to this backend. */}
-            <a
-              href={DEMO_URL}
-              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg text-sm font-medium text-slate-700 ring-1 ring-slate-300 ring-inset hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-blue-600"
-            >
-              <MonitorPlay className="size-4" /> Prøv demo
-            </a>
-            <p className="text-xs text-slate-500">Uten innlogging, med eksempeldata som bare lagres i nettleseren.</p>
-          </div>
-        )}
       </form>
     </main>
   )

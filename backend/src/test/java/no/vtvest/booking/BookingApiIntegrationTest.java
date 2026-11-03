@@ -46,6 +46,25 @@ class BookingApiIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    void bookingPastMidnightConflictsWithBookingsTheNextDay() throws Exception {
+        create(KARI, bookingJson(ROOM_A, ORG_A, "Nattarrangement", at(7, 22), at(8, 2)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("APPROVED"));
+
+        create(OLA, bookingJson(ROOM_A, ORG_B, "Tidlig møte", at(8, 1), at(8, 3)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+
+        create(OLA, bookingJson(ROOM_A, ORG_B, "Etterpå", at(8, 2), at(8, 3)))
+                .andExpect(status().isCreated());
+
+        // The 12-hour limit still applies across midnight.
+        create(KARI, bookingJson(ROOM_A, ORG_A, "For lang", at(9, 20), at(10, 9)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("RULE_VIOLATION"));
+    }
+
+    @Test
     void requestPermissionCreatesPendingRequestThatDoesNotBlock() throws Exception {
         create(KARI, bookingJson(STORSALEN, ORG_A, "Seminar", at(7, 12), at(7, 14)))
                 .andExpect(status().isCreated())

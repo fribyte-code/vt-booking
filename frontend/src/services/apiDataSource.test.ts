@@ -224,11 +224,6 @@ describe('API data source', () => {
     })
   })
 
-  it('has no demo capabilities', () => {
-    const { client } = fakeServer({})
-    expect(createApiDataSource(client).demo).toBeUndefined()
-  })
-
   it('sends approval comments and cancellation reasons, and omits blank ones', async () => {
     const { client, calls } = fakeServer({
       'POST /api/bookings/b1/approve': () => json(200, { ...BOOKING, status: 'APPROVED' }),
