@@ -15,7 +15,7 @@ const newsAt = (b: Booking) => (cancelledByOther(b) ? b.cancelledAt : b.decidedA
 
 /**
  * Tells the requester what happened to their bookings: an admin's decision on a request, or a
- * cancellation by an organization or system administrator. Read state is kept per browser in API mode.
+ * cancellation by an organization or system administrator. Read state is kept per browser.
  */
 export function NotificationsMenu() {
   const app = useApp()
@@ -27,8 +27,8 @@ export function NotificationsMenu() {
         (cancelledByOther(b) || (b.decidedAt && (b.status === 'APPROVED' || b.status === 'REJECTED'))),
     )
     .sort((a, b) => newsAt(b).localeCompare(newsAt(a)))
-  // API mode: invitations to organizations, answered right here.
-  const invitations = app.acceptInvitation ? (app.data.invitations ?? []) : []
+  // Invitations to organizations, answered right here.
+  const invitations = app.data.invitations ?? []
   const count = unseen.length + invitations.length
 
   return (

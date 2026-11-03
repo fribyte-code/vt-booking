@@ -1,11 +1,8 @@
 import { Check, ChevronDown, Inbox, Repeat, SearchX, ShieldAlert, User, X } from 'lucide-react'
 import { lazy, Suspense, useState } from 'react'
-import { Chip } from '../components/admin/Chip'
 import { RequestFilters } from '../components/admin/RequestFilters'
-import { PermissionBadge, RoomDot } from '../components/booking/badges'
 import { BookingListItem, EmptyState } from '../components/booking/BookingListItem'
 import { DecisionDialog } from '../components/booking/DecisionDialog'
-import { Avatar } from '../components/layout/Avatar'
 import { Button } from '../components/ui/Button'
 import { Alert } from '../components/ui/fields'
 import { Tabs } from '../components/ui/Tabs'
@@ -14,7 +11,6 @@ import { cn } from '../lib/cn'
 import { formatDate, formatDateTime, formatShortDate, formatTimeRange } from '../lib/dates'
 import {
   findConflicts,
-  getPermission,
   hasRequestFilter,
   isExpiredRequest,
   matchesRequestFilter,
@@ -22,16 +18,15 @@ import {
   type RequestFilter,
 } from '../services/bookingRules'
 import type { Booking } from '../types'
-import { IS_DEMO } from '../config'
 
-// API mode only: managing users, organizations and rooms. The demo shows a read-only overview instead.
+// Managing users, organizations and rooms, loaded when their tab is opened.
 const UsersAdmin = lazy(() => import('../components/admin/UsersAdmin').then((m) => ({ default: m.UsersAdmin })))
 const OrganizationsAdmin = lazy(() =>
   import('../components/admin/OrganizationsAdmin').then((m) => ({ default: m.OrganizationsAdmin })),
 )
 const RoomsAdmin = lazy(() => import('../components/admin/RoomsAdmin').then((m) => ({ default: m.RoomsAdmin })))
 
-type TabId = 'pending' | 'processed' | 'access' | 'users' | 'organizations' | 'rooms'
+type TabId = 'pending' | 'processed' | 'users' | 'organizations' | 'rooms'
 
 export function AdminPage() {
   const app = useApp()
@@ -44,7 +39,6 @@ export function AdminPage() {
       <div className="flex h-full items-center justify-center p-6">
         <EmptyState icon={<ShieldAlert />} title="Ingen tilgang">
           Administrasjonssiden er kun for administratorer.
-          {IS_DEMO && ' Bytt til administratorbrukeren øverst til høyre.'}
         </EmptyState>
       </div>
     )
@@ -66,9 +60,7 @@ export function AdminPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Administrasjon</h1>
           <p className="mt-1 text-sm text-slate-500">
-            {IS_DEMO
-              ? 'Behandle søknader og se tilganger for rom og organisasjoner.'
-              : 'Behandle søknader, og administrer brukere, organisasjoner, rom og tilganger.'}
+            Behandle søknader, og administrer brukere, organisasjoner, rom og tilganger.
           </p>
         </div>
 
@@ -79,13 +71,9 @@ export function AdminPage() {
           tabs={[
             { id: 'pending', label: 'Ventende søknader', count: pending.length },
             { id: 'processed', label: 'Behandlet', count: processed.length },
-            ...(IS_DEMO
-              ? [{ id: 'access' as const, label: 'Rom og tilganger' }]
-              : [
-                  { id: 'users' as const, label: 'Brukere' },
-                  { id: 'organizations' as const, label: 'Organisasjoner' },
-                  { id: 'rooms' as const, label: 'Rom og tilganger' },
-                ]),
+            { id: 'users', label: 'Brukere' },
+            { id: 'organizations', label: 'Organisasjoner' },
+            { id: 'rooms', label: 'Rom og tilganger' },
           ]}
         />
 
@@ -112,14 +100,11 @@ export function AdminPage() {
           )}
           {tab === 'pending' && !noMatches && <PendingList bookings={matching} />}
           {tab === 'processed' && !noMatches && <ProcessedList bookings={matching} />}
-          {tab === 'access' && <AccessOverview />}
-          {!IS_DEMO && (
-            <Suspense fallback={<p className="text-sm text-slate-500">Laster …</p>}>
-              {tab === 'users' && <UsersAdmin />}
-              {tab === 'organizations' && <OrganizationsAdmin />}
-              {tab === 'rooms' && <RoomsAdmin />}
-            </Suspense>
-          )}
+          <Suspense fallback={<p className="text-sm text-slate-500">Laster …</p>}>
+            {tab === 'users' && <UsersAdmin />}
+            {tab === 'organizations' && <OrganizationsAdmin />}
+            {tab === 'rooms' && <RoomsAdmin />}
+          </Suspense>
         </div>
       </div>
     </div>
@@ -356,83 +341,5 @@ function ProcessedList({ bookings }: { bookings: Booking[] }) {
         </BookingListItem>
       ))}
     </ul>
-  )
-}
-
-function AccessOverview() {
-  const { data } = useApp()
-
-  return (
-    <div className="space-y-8">
-      <section>
-        <h2 className="mb-1 text-base font-semibold text-slate-900">Bookingtilganger</h2>
-        <p className="mb-4 text-sm text-slate-500">
-          Hvilke organisasjoner som kan booke hvert rom direkte, må søke, eller ikke har tilgang. Redigering av
-          tilganger er ikke med i prototypen.
-        </p>
-        <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
-          <table className="w-full min-w-[560px] text-left text-sm">
-            <thead className="bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
-              <tr>
-                <th scope="col" className="px-4 py-3">
-                  Rom
-                </th>
-                {data.organizations.map((o) => (
-                  <th key={o.id} scope="col" className="px-4 py-3">
-                    {o.name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {data.rooms.map((room) => (
-                <tr key={room.id}>
-                  <th scope="row" className="px-4 py-3 font-normal">
-                    <span className="flex items-center gap-2.5">
-                      <RoomDot color={room.color} />
-                      <span>
-                        <span className="block font-medium text-slate-900">{room.name}</span>
-                        <span className="block text-xs text-slate-500">
-                          {[room.capacity && `${room.capacity} plasser`, room.location].filter(Boolean).join(' · ')}
-                        </span>
-                      </span>
-                    </span>
-                  </th>
-                  {data.organizations.map((o) => (
-                    <td key={o.id} className="px-4 py-3">
-                      <PermissionBadge permission={getPermission(room, o.id)} />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section>
-        <h2 className="mb-4 text-base font-semibold text-slate-900">Brukere</h2>
-        <ul className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
-          {data.users.map((u) => (
-            <li key={u.id} className="flex items-center gap-3 px-4 py-3">
-              <Avatar user={u} />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-900">{u.name}</p>
-                <p className="truncate text-xs text-slate-500">{u.email}</p>
-              </div>
-              <div className="flex flex-wrap justify-end gap-1.5">
-                {u.role === 'ADMIN' ? (
-                  <Chip label="Administrator" />
-                ) : (
-                  u.organizationIds.map((id) => (
-                    <Chip key={id} label={data.organizations.find((o) => o.id === id)?.name ?? id} />
-                  ))
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </div>
   )
 }

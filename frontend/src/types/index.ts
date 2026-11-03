@@ -24,7 +24,7 @@ export interface User {
   role: UserRole
   /** Memberships. In the database this is the `memberships` join table. */
   organizationIds: string[]
-  /** API mode, signed-in user only: organizations this user administers (ORG_ADMIN). */
+  /** Signed-in user only: organizations this user administers (ORG_ADMIN). */
   orgAdminOrganizationIds?: string[]
 }
 
@@ -35,7 +35,7 @@ export interface Room {
   location: string
   /** Number of seats, when the administrator has set it. */
   capacity?: number
-  /** API mode: a disabled room is shown but can't be booked. The demo has active rooms only. */
+  /** A disabled room is shown but can't be booked. */
   status?: 'ACTIVE' | 'DISABLED'
   /** Hex color used in the calendar. */
   color: string
@@ -48,7 +48,7 @@ export interface Booking {
   roomId: string
   organizationId: string
   requestedById: string
-  /** Set by the API, which only returns names the user may see. Demo data looks users up instead. */
+  /** Set by the API, which only returns names the user may see. */
   requestedByName?: string
   title: string
   description?: string
@@ -74,12 +74,12 @@ export interface Booking {
   /** When the booking was last edited (title, description, room or time). */
   updatedAt?: string
   updatedById?: string
-  /** API mode: who edited it, for the own organization and administrators. */
+  /** Who edited it, for the own organization and administrators. */
   updatedByName?: string
   /** Shared by the occurrences of a weekly series. */
   seriesId?: string
   /**
-   * API mode: the room's name, also for archived rooms, which are not in `AppData.rooms`.
+   * The room's name, also for archived rooms, which are not in `AppData.rooms`.
    * Use it when the room can't be looked up.
    */
   roomName?: string
@@ -156,7 +156,7 @@ export interface SeriesApproved {
   notApproved: (OccurrenceSlot & { code: string; reason: string })[]
 }
 
-/** API mode: an invitation to join an organization, waiting for the signed-in user's answer. */
+/** An invitation to join an organization, waiting for the signed-in user's answer. */
 export interface Invitation {
   id: string
   organizationId: string
@@ -171,6 +171,6 @@ export interface AppData {
   organizations: Organization[]
   rooms: Room[]
   bookings: Booking[]
-  /** API mode: the signed-in user's pending invitations. */
+  /** The signed-in user's pending invitations. */
   invitations?: Invitation[]
 }

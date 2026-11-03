@@ -42,7 +42,6 @@ jobs:
             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
             type=sha,format=long,prefix=
 
-      # The frontend image is built with WITH_DEMO=false (its default): no demo in production.
       - uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.service }}

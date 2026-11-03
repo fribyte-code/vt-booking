@@ -2,7 +2,7 @@
 
 The REST API of the Velferdstinget Vest room booking system: Spring Boot 4.1, Java 21, Spring Security, JPA, Flyway and PostgreSQL. It enforces every authorization and booking rule. See `../docs/ARCHITECTURE.md` for how it fits together.
 
-The React frontend in `../frontend/` uses this API in its `api` mode (`npm run dev:api`, see its README).
+The React frontend in `../frontend/` uses this API (`npm run dev`, see its README).
 
 ## Requirements
 

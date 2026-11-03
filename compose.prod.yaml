@@ -43,7 +43,7 @@ services:
 
   frontend:
     image: ghcr.io/fribyte-code/vt-booking-frontend:${IMAGE_TAG:-latest}
-    build: frontend # WITH_DEMO defaults to false: no demo in production
+    build: frontend
     environment:
       # The reverse proxy in front of Nginx, as Nginx sees it, and the header with the client address.
       TRUSTED_PROXY: ${TRUSTED_PROXY:-127.0.0.1}

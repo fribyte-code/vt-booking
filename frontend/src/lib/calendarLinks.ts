@@ -60,7 +60,7 @@ export function outlookCalendarUrl(event: CalendarEvent, host: 'office' | 'live'
   })}`
 }
 
-/** The backend's iCalendar file for a booking or a whole series (API mode only). */
+/** The backend's iCalendar file for a booking or a whole series. */
 export function calendarFileUrl(target: { bookingId: string } | { seriesId: string }): string {
   return 'seriesId' in target
     ? `/api/bookings/series/${target.seriesId}/calendar.ics`

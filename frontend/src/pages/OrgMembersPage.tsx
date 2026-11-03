@@ -14,7 +14,7 @@ import { errorMessage } from '../lib/errors'
 import { type Member, type MembershipRole, membersApi, type OrgInvitation, roleLabels } from '../services/adminApi'
 
 /**
- * Members of an organization, for its ORG_ADMINs (and system administrators). API mode only.
+ * Members of an organization, for its ORG_ADMINs (and system administrators).
  * Org admins add members, appoint other org admins and remove members. They cannot reset
  * passwords or change anyone's account; that is for system administrators.
  */

@@ -1,6 +1,5 @@
 import { CalendarPlus, ChevronDown, ExternalLink } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { IS_DEMO } from '../../config'
 import { useApp } from '../../hooks/useApp'
 import { cn } from '../../lib/cn'
 import {
@@ -82,7 +81,7 @@ export function AddToCalendar({ booking }: { booking: Booking }) {
     const event = toEvent(booking)
     links = [
       { label: 'Google Kalender', href: googleCalendarUrl(event) },
-      ...(IS_DEMO ? [] : [{ label: 'Apple Kalender', href: calendarFileUrl({ bookingId: booking.id }), sameTab: true }]),
+      { label: 'Apple Kalender', href: calendarFileUrl({ bookingId: booking.id }), sameTab: true },
       { label: 'Outlook (jobb/skole)', href: outlookCalendarUrl(event, 'office') },
       { label: 'Outlook.com', href: outlookCalendarUrl(event, 'live') },
     ]
@@ -98,7 +97,7 @@ export function AddToCalendar({ booking }: { booking: Booking }) {
               label: 'Google Kalender',
               unavailable: 'Serien har flyttede eller kansellerte datoer, som Google-lenker ikke kan gjengi.',
             },
-      ...(IS_DEMO ? [] : [{ label: 'Apple Kalender', href: calendarFileUrl({ seriesId: seriesId! }), sameTab: true }]),
+      { label: 'Apple Kalender', href: calendarFileUrl({ seriesId: seriesId! }), sameTab: true },
       { label: 'Outlook (jobb/skole)', unavailable: noRepeat },
       { label: 'Outlook.com', unavailable: noRepeat },
     ]

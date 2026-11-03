@@ -1,3 +1,4 @@
+import { Moon } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { isExpiredRequest, permissionLabels } from '../../services/bookingRules'
 import type { Booking, BookingStatus, Permission } from '../../types'
@@ -31,6 +32,25 @@ export function PermissionBadge({ permission, short }: { permission: Permission;
   return (
     <span className={cn(pill, permissionStyles[permission])}>
       {short ? shortLabels[permission] : permissionLabels[permission]}
+    </span>
+  )
+}
+
+/**
+ * Marks a booking that goes past midnight. `onColor` is for the calendar, where it sits on the
+ * room color; `labelClassName` lets the calendar hide the text when the event is narrow.
+ */
+export function NightBadge({ onColor, labelClassName }: { onColor?: boolean; labelClassName?: string }) {
+  return (
+    <span
+      title="Går over midnatt"
+      className={cn(
+        pill,
+        onColor ? 'bg-white/90 px-1.5 text-orange-700 ring-white/40' : 'bg-orange-50 text-orange-700 ring-orange-600/20',
+      )}
+    >
+      <Moon className="size-3 shrink-0" aria-hidden />
+      <span className={labelClassName}>Nattbooking</span>
     </span>
   )
 }

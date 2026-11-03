@@ -8,8 +8,7 @@ import './index.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {/* BASE_URL is /demo/ for the demo served next to the real app. */}
-    <BrowserRouter basename={import.meta.env.BASE_URL}>
+    <BrowserRouter>
       <AppProvider>
         <App />
       </AppProvider>
