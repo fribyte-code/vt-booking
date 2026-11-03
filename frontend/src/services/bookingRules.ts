@@ -255,3 +255,21 @@ export function evaluateEdit(
     losesApproval: booking.status === 'APPROVED' && status === 'PENDING',
   }
 }
+
+/** Which requests to list. An empty list doesn't limit that category. */
+export interface RequestFilter {
+  organizationIds: string[]
+  roomIds: string[]
+}
+
+export const NO_REQUEST_FILTER: RequestFilter = { organizationIds: [], roomIds: [] }
+
+export const hasRequestFilter = (f: RequestFilter) => f.organizationIds.length + f.roomIds.length > 0
+
+/** Any of the chosen organizations AND any of the chosen rooms. */
+export function matchesRequestFilter(b: Pick<Booking, 'organizationId' | 'roomId'>, f: RequestFilter): boolean {
+  return (
+    (f.organizationIds.length === 0 || f.organizationIds.includes(b.organizationId)) &&
+    (f.roomIds.length === 0 || f.roomIds.includes(b.roomId))
+  )
+}

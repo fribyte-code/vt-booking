@@ -1,8 +1,9 @@
 import type { DatesSetArg } from '@fullcalendar/core'
 import type FullCalendar from '@fullcalendar/react'
-import { ChevronLeft, ChevronRight, LoaderCircle } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { CalendarDays, ChevronLeft, ChevronRight, LoaderCircle, Rows3 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookingCalendar, type BookingMove, type CalendarViewType } from '../components/calendar/BookingCalendar'
+import { DailyRoomCalendar } from '../components/calendar/DailyRoomCalendar'
 import { MoveBookingDialog, type PendingMove } from '../components/calendar/MoveBookingDialog'
 import { Button, IconButton } from '../components/ui/Button'
 import { useApp } from '../hooks/useApp'
@@ -27,8 +28,37 @@ export function CalendarPage() {
   const [title, setTitle] = useState('')
   const [showsToday, setShowsToday] = useState(true)
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null)
+  // The room overview is a second way to look at the same bookings. The ordinary calendar stays
+  // mounted underneath it, so it keeps its view and loads the data for whichever day is shown.
+  const [mode, setMode] = useState<'calendar' | 'rooms'>('calendar')
+  const [day, setDay] = useState(() => new Date())
+  const roomsMode = mode === 'rooms'
 
   const api = () => calendarRef.current?.getApi()
+
+  const goToDay = (next: Date) => {
+    setDay(next)
+    api()?.gotoDate(next)
+  }
+
+  const switchMode = (next: 'calendar' | 'rooms') => {
+    if (next === mode) return
+    // Carry the day over, so switching never loses track of which day is shown.
+    if (next === 'rooms') {
+      const view = api()?.view
+      const inView = view && view.currentStart <= day && day < view.currentEnd
+      setDay(inView ? day : showsToday ? new Date() : (api()?.getDate() ?? new Date()))
+    }
+    setMode(next)
+  }
+
+  // A calendar that was hidden has no size; measure it again when it comes back.
+  useEffect(() => {
+    if (!roomsMode) api()?.updateSize()
+  }, [roomsMode])
+
+  const shiftDay = (n: number) => goToDay(new Date(day.getFullYear(), day.getMonth(), day.getDate() + n))
+  const isToday = (d: Date) => d.toDateString() === new Date().toDateString()
 
   const changeView = (type: CalendarViewType, date?: Date) => {
     api()?.changeView(type, date)
@@ -94,44 +124,90 @@ export function CalendarPage() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-3 py-3 sm:px-4">
-        <Button size="sm" className="rounded-full px-4" onClick={() => api()?.today()} disabled={showsToday}>
+        <Button
+          size="sm"
+          className="rounded-full px-4"
+          onClick={() => (roomsMode ? goToDay(new Date()) : api()?.today())}
+          disabled={roomsMode ? isToday(day) : showsToday}
+        >
           I dag
         </Button>
         <div className="flex items-center">
-          <IconButton aria-label="Forrige" onClick={() => api()?.prev()}>
+          <IconButton aria-label="Forrige" onClick={() => (roomsMode ? shiftDay(-1) : api()?.prev())}>
             <ChevronLeft className="size-5" />
           </IconButton>
-          <IconButton aria-label="Neste" onClick={() => api()?.next()}>
+          <IconButton aria-label="Neste" onClick={() => (roomsMode ? shiftDay(1) : api()?.next())}>
             <ChevronRight className="size-5" />
           </IconButton>
         </div>
         <h1 className="order-last min-w-0 basis-full truncate text-lg font-normal text-slate-800 sm:order-none sm:flex-1 sm:basis-auto sm:text-xl">
-          {title}
+          {roomsMode ? formatRangeTitle('timeGridDay', day, day) : title}
           {app.loading && (
             <LoaderCircle aria-label="Laster" className="ml-2 inline size-4 animate-spin align-middle text-slate-400" />
           )}
         </h1>
 
-        <div role="tablist" aria-label="Visning" className="ml-auto flex rounded-full bg-slate-100 p-0.5 sm:ml-0">
-          {views.map((v) => (
-            <button
-              key={v.type}
-              type="button"
-              role="tab"
-              aria-selected={view === v.type}
-              onClick={() => changeView(v.type)}
-              className={cn(
-                'h-7 rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-600',
-                view === v.type ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900',
-              )}
-            >
-              {v.label}
-            </button>
-          ))}
+        <div className="ml-auto flex items-center gap-2 sm:ml-0">
+          {!roomsMode && (
+          <div role="tablist" aria-label="Visning" className="flex rounded-full bg-slate-100 p-0.5">
+            {views.map((v) => (
+              <button
+                key={v.type}
+                type="button"
+                role="tab"
+                aria-selected={view === v.type}
+                onClick={() => changeView(v.type)}
+                className={cn(
+                  'h-7 rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-600',
+                  view === v.type ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900',
+                )}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+          )}
+          <div role="tablist" aria-label="Kalendertype" className="flex rounded-full bg-slate-100 p-0.5">
+            {[
+              { value: 'calendar', label: 'Kalender', icon: <CalendarDays className="size-3.5" /> },
+              { value: 'rooms', label: 'Rom', icon: <Rows3 className="size-3.5" /> },
+            ].map((m) => (
+              <button
+                key={m.value}
+                type="button"
+                role="tab"
+                aria-selected={mode === m.value}
+                onClick={() => switchMode(m.value as 'calendar' | 'rooms')}
+                className={cn(
+                  'flex h-7 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-600',
+                  mode === m.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900',
+                )}
+              >
+                {m.icon}
+                {m.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 pr-2 pb-2 sm:pr-4">
+      {roomsMode && (
+        <div className="min-h-0 flex-1 px-3 pb-3 sm:px-4">
+          <DailyRoomCalendar
+            day={day}
+            onDayChange={goToDay}
+            rooms={data.rooms.filter((r) => visibleRoomIds.includes(r.id))}
+            bookings={bookings}
+            organizations={data.organizations}
+            onSelectRange={(start, end, roomId) =>
+              app.openBookingDialog({ start: start.toISOString(), end: end.toISOString(), roomId })
+            }
+            onBookingClick={app.openBookingDetails}
+          />
+        </div>
+      )}
+
+      <div className={cn('min-h-0 flex-1 pr-2 pb-2 sm:pr-4', roomsMode && 'hidden')}>
         <BookingCalendar
           calendarRef={calendarRef}
           initialView={view}

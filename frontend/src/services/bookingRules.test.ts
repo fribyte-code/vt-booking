@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { combineEnd } from '../lib/dates'
 import type { AppData, Booking, Room, User } from '../types'
-import { canChangeBooking, evaluateBooking, evaluateEdit, isExpiredRequest } from './bookingRules'
+import { canChangeBooking, evaluateBooking, evaluateEdit, isExpiredRequest, matchesRequestFilter } from './bookingRules'
 
 const NOW = new Date('2030-01-01T10:00:00Z')
 const HOUR = 3_600_000
@@ -136,5 +136,30 @@ describe('bookingRules', () => {
       const cancelled = booking({ status: 'CANCELLED' })
       expect(evaluateEdit(data(), user, cancelled, edit(cancelled), NOW)).toMatchObject({ code: 'INVALID_STATE' })
     })
+  })
+})
+
+describe('matchesRequestFilter', () => {
+  const requests = [
+    { organizationId: 'A', roomId: '101' },
+    { organizationId: 'A', roomId: '103' },
+    { organizationId: 'B', roomId: '102' },
+    { organizationId: 'C', roomId: '101' },
+  ]
+  const ids = (organizationIds: string[], roomIds: string[]) =>
+    requests.filter((r) => matchesRequestFilter(r, { organizationIds, roomIds })).map((r) => `${r.organizationId}${r.roomId}`)
+
+  it('shows everything without a filter', () => {
+    expect(ids([], [])).toHaveLength(4)
+  })
+
+  it('ORs within a category', () => {
+    expect(ids(['A', 'B'], [])).toEqual(['A101', 'A103', 'B102'])
+    expect(ids([], ['101', '102'])).toEqual(['A101', 'B102', 'C101'])
+  })
+
+  it('ANDs the categories', () => {
+    expect(ids(['A', 'B'], ['101', '102'])).toEqual(['A101', 'B102'])
+    expect(ids(['C'], ['102'])).toEqual([])
   })
 })
