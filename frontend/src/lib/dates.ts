@@ -19,6 +19,29 @@ export function combineDateTime(date: string, time: string): string {
   return Number.isNaN(d.getTime()) ? '' : d.toISOString()
 }
 
+/** The local date after `date` (`YYYY-MM-DD`). Noon avoids daylight saving edge cases. */
+export function nextDateInput(date: string): string {
+  const d = new Date(`${date}T12:00`)
+  d.setDate(d.getDate() + 1)
+  return toDateInput(d)
+}
+
+/**
+ * End of a booking entered as one date and two times. An end time at or before the start time
+ * means the next day, so 22:00–02:00 ends at 02:00 the day after.
+ */
+export function combineEnd(date: string, startTime: string, endTime: string): string {
+  if (!date || !startTime || !endTime) return ''
+  return combineDateTime(endTime <= startTime ? nextDateInput(date) : date, endTime)
+}
+
+/** Whether a booking goes past midnight (local time). Ending exactly at 00:00 does not count. */
+export function crossesMidnight(start: string, end: string): boolean {
+  const s = new Date(start)
+  const lastMoment = new Date(Date.parse(end) - 1)
+  return toDateInput(s) !== toDateInput(lastMoment)
+}
+
 export function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })
 }

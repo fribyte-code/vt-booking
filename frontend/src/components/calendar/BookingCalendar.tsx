@@ -13,10 +13,12 @@ import dayGridPlugin from '@fullcalendar/daygrid'
 import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction'
 import FullCalendar from '@fullcalendar/react'
 import timeGridPlugin from '@fullcalendar/timegrid'
-import { Hourglass, Repeat } from 'lucide-react'
+import { Hourglass, Moon, Repeat } from 'lucide-react'
 import { type Ref, useMemo } from 'react'
 import { cn } from '../../lib/cn'
 import { tint } from '../../lib/color'
+import { crossesMidnight } from '../../lib/dates'
+import { NightBadge } from '../booking/badges'
 import { roomInfo } from '../../lib/rooms'
 import type { Booking, Organization, Room } from '../../types'
 
@@ -134,7 +136,7 @@ export function BookingCalendar({
       selectable
       selectMirror
       allDaySlot={false}
-      slotMinTime="06:00:00"
+      slotMinTime="00:00:00"
       slotMaxTime="24:00:00"
       scrollTime="07:30:00"
       slotDuration="00:30:00"
@@ -200,13 +202,15 @@ function renderEvent(arg: EventContentArg) {
   // breaks the calendar's rendering, so later changes stop showing until the page is reloaded.
   if (!booking) return <span className="text-xs">{arg.timeText}</span>
   const pending = booking.status === 'PENDING'
-  const label = `${booking.title}, ${arg.timeText}, ${roomName}${pending ? ', venter på godkjenning' : ''}${booking.seriesId ? ', gjentakende' : ''}`
+  const night = crossesMidnight(booking.start, booking.end)
+  const label = `${booking.title}, ${arg.timeText}, ${roomName}${pending ? ', venter på godkjenning' : ''}${booking.seriesId ? ', gjentakende' : ''}${night ? ', nattbooking' : ''}`
 
   if (arg.view.type === 'dayGridMonth') {
     return (
       <span className="flex min-w-0 items-center gap-1 text-xs" aria-label={label}>
         {pending && <Hourglass className="size-3 shrink-0" />}
         {booking.seriesId && <Repeat className="size-3 shrink-0" />}
+        {night && <Moon className="size-3 shrink-0" />}
         <span className="shrink-0 opacity-90">{arg.timeText}</span>
         <span className="truncate font-medium">{booking.title}</span>
       </span>
@@ -214,11 +218,16 @@ function renderEvent(arg: EventContentArg) {
   }
 
   return (
-    <span className="flex h-full min-w-0 flex-col overflow-hidden text-xs leading-snug" aria-label={label}>
+    <span className="@container flex h-full min-w-0 flex-col overflow-hidden text-xs leading-snug" aria-label={label}>
       <span className="flex items-center gap-1 font-semibold">
         {pending && <Hourglass className="size-3 shrink-0" />}
         <span className="truncate">{booking.title}</span>
         {booking.seriesId && <Repeat className="size-3 shrink-0 opacity-80" />}
+        {night && (
+          <span className="ml-auto shrink-0">
+            <NightBadge onColor labelClassName="hidden @[10rem]:inline" />
+          </span>
+        )}
       </span>
       <span className="truncate opacity-90">{arg.timeText}</span>
       <span className="truncate opacity-85">

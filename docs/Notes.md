@@ -69,4 +69,4 @@ Status for hvert spørsmål står i `docs/OPEN_QUESTIONS.md`.
 - Over 2 uker gamlet, auto hide. Bookiner default hidden men kanskje der uansett
 - rom moderator. Ny rolle. Enkelt rom eller flerne rom. Rolle. Ansvar for noen rom - Middels 
 - Ønsker en chat funksjon, private chatter -Lav priotering
-
+- Ved opprettelse av bruker, ta vekk at man må skrive næverandre passord igjen.

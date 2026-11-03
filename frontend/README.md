@@ -178,7 +178,7 @@ src/
 - Series occurrences are ordinary bookings with a shared `seriesId`. They keep their local wall-clock time across daylight saving changes. A series has 2–52 occurrences, the last within 180 days.
 - Dragging in the calendar moves only that occurrence of a series. To move several, use "Endre" → "Denne og alle følgende".
 - The administrator isn't a member of any organization, so they can't make bookings. They approve, reject and cancel.
-- A booking can't cross midnight. An end time of 00:00 means the end of the selected day.
+- A booking can cross midnight: an end time at or before the start time means the next day (still max 12 hours). Such bookings get a "Nattbooking" badge (moon icon), derived from start and end in local time.
 - The frontend keeps each room's effective permission per organization on the room (`room.permissions[orgId]`). In API mode the server computes it from the room's default and the `room_access` overrides.
 - The Inter font is bundled with the app (`@fontsource-variable/inter`), so it isn't fetched from a CDN.
 

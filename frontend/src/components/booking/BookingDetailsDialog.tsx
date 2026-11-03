@@ -2,7 +2,7 @@ import { AlignLeft, Ban, Building2, Check, ChevronDown, Clock, Gavel, MapPin, Pe
 import { type ReactNode, useEffect, useState } from 'react'
 import { useApp } from '../../hooks/useApp'
 import { cn } from '../../lib/cn'
-import { formatDate, formatDateTime, formatShortDate, formatTimeRange } from '../../lib/dates'
+import { crossesMidnight, formatDate, formatDateTime, formatShortDate, formatTimeRange } from '../../lib/dates'
 import { errorMessage } from '../../lib/errors'
 import { canChangeBooking, findConflicts, isExpiredRequest, isOpenForChanges } from '../../services/bookingRules'
 import type { Booking } from '../../types'
@@ -12,7 +12,7 @@ import { Modal } from '../ui/Modal'
 import { AddToCalendar } from './AddToCalendar'
 import { CancelBookingDialog } from './CancelBookingDialog'
 import { DecisionDialog } from './DecisionDialog'
-import { RoomDot, StatusBadge } from './badges'
+import { NightBadge, RoomDot, StatusBadge } from './badges'
 
 function Row({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
@@ -101,13 +101,17 @@ export function BookingDetailsDialog({ bookingId }: { bookingId: string }) {
         )
       }
     >
-      <div className="mb-2">
+      <div className="mb-2 flex flex-wrap gap-1.5">
         <StatusBadge booking={booking} />
+        {crossesMidnight(booking.start, booking.end) && <NightBadge />}
       </div>
       <div className="divide-y divide-slate-100">
         <Row icon={<Clock />}>
           <p className="font-medium text-slate-900 first-letter:uppercase">{formatDate(booking.start)}</p>
-          <p>{formatTimeRange(booking.start, booking.end)}</p>
+          <p>
+            {formatTimeRange(booking.start, booking.end)}
+            {crossesMidnight(booking.start, booking.end) && ` (over midnatt, slutter ${formatDate(booking.end)})`}
+          </p>
         </Row>
         <Row icon={<MapPin />}>
           <p className="font-medium text-slate-900">{room.name}</p>

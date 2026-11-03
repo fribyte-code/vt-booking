@@ -5,7 +5,16 @@ import type { BookingDraft } from '../../context/appContext'
 import { useApp } from '../../hooks/useApp'
 import { useSeriesPreview } from '../../hooks/useSeriesPreview'
 import { cn } from '../../lib/cn'
-import { combineDateTime, formatTimeRange, toDateInput, toTimeInput } from '../../lib/dates'
+import {
+  combineDateTime,
+  combineEnd,
+  crossesMidnight,
+  formatDate,
+  formatTimeRange,
+  nextDateInput,
+  toDateInput,
+  toTimeInput,
+} from '../../lib/dates'
 import { errorMessage } from '../../lib/errors'
 import { BookingError } from '../../services/bookingError'
 import { evaluateBooking, evaluateEdit, getPermission, type RuleResult, type EditResult } from '../../services/bookingRules'
@@ -24,14 +33,15 @@ function defaultStart(): Date {
 }
 
 /**
- * The selected day in local time, for loading the room's bookings that day. The end is the next
- * local midnight, so days with a daylight saving change (23 or 25 hours) are covered exactly.
+ * The selected day in local time, for loading the room's bookings that day, or that day and the
+ * next for a booking past midnight. The end is a local midnight, so days with a daylight saving
+ * change (23 or 25 hours) are covered exactly.
  */
-function dayRange(date: string): { start: string; end: string } | null {
+function dayRange(date: string, days: number): { start: string; end: string } | null {
   const start = new Date(`${date}T00:00`)
   if (Number.isNaN(start.getTime())) return null
   const end = new Date(start)
-  end.setDate(end.getDate() + 1)
+  end.setDate(end.getDate() + days)
   return { start: start.toISOString(), end: end.toISOString() }
 }
 
@@ -40,15 +50,6 @@ interface Availability {
   key: string
   bookings?: Booking[]
   error?: string
-}
-
-/** End time "00:00" means midnight at the end of the selected day. */
-function endIso(date: string, time: string): string {
-  const iso = combineDateTime(date, time)
-  if (!iso || time !== '00:00') return iso
-  const d = new Date(iso)
-  d.setDate(d.getDate() + 1)
-  return d.toISOString()
 }
 
 /** The local date `weeks` weeks after `date` (`YYYY-MM-DD`). */
@@ -132,10 +133,15 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
   // A booking in an archived room can only get a new title or description.
   const roomArchived = !!editing && !app.room(editing.roomId)
 
+  const start = combineDateTime(date, startTime)
+  const end = combineEnd(date, startTime, endTime)
+  const overnight = !!start && !!end && crossesMidnight(start, end)
+
   // The calendar only has bookings for the range it shows, so the dialog loads the selected
-  // room's bookings for the selected day itself. Otherwise a date outside that range would look free.
+  // room's bookings for the selected day (and the next one, past midnight) itself. Otherwise a
+  // date outside that range would look free.
   const { listBookings } = app
-  const day = dayRange(date)
+  const day = dayRange(date, overnight ? 2 : 1)
   const availabilityKey = day && roomId && !roomArchived ? `${roomId}|${day.start}|${day.end}` : null
   useEffect(() => {
     if (!availabilityKey) return
@@ -159,8 +165,8 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
     organizationId,
     title,
     description,
-    start: combineDateTime(date, startTime),
-    end: endIso(date, endTime),
+    start,
+    end,
   }
   const room = app.room(roomId)
   const permission = getPermission(room, organizationId)
@@ -411,6 +417,11 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
             />
           </Field>
         </div>
+        {overnight && (
+          <p className="-mt-3 text-xs text-slate-600">
+            Slutter neste dag, {formatDate(end)} kl. {endTime}. Bookingen merkes som nattbooking.
+          </p>
+        )}
 
         {!editing && orgs.length > 0 && (
           <div className="grid grid-cols-2 gap-3">
@@ -527,10 +538,13 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
 
         {room && occupied.length > 0 && (
           <div className="rounded-xl bg-slate-50 px-3 py-2.5 text-sm">
-            <p className="mb-1 font-medium text-slate-700">Opptatt i {room.name} denne dagen</p>
+            <p className="mb-1 font-medium text-slate-700">
+              Opptatt i {room.name} {overnight ? 'denne og neste dag' : 'denne dagen'}
+            </p>
             <ul className="space-y-0.5 text-slate-600">
               {occupied.map((b) => (
                 <li key={b.id}>
+                  {overnight && toDateInput(new Date(b.start)) === nextDateInput(date) && 'Neste dag '}
                   <span className="tabular-nums">{formatTimeRange(b.start, b.end)}</span> · {b.title}
                   {app.organization(b.organizationId) && ` (${app.organization(b.organizationId)?.name})`}
                   {b.status === 'PENDING' && <span className="text-slate-500"> – søknad, holder ikke av tiden</span>}
