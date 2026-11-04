@@ -71,6 +71,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null | undefined>(undefined)
   // Logged in with a temporary password, which must be replaced before anything else.
   const [mustChangePassword, setMustChangePassword] = useState(false)
+  // The temporary password just typed at login, kept in memory only until it has been changed,
+  // so the forced password change doesn't ask for it again. Lost on reload (then it is asked for).
+  const [loginPassword, setLoginPassword] = useState<string | null>(null)
   const [data, setData] = useState<AppData | null>(null)
   const [range, setRange] = useState<DateRange>(initialRange)
   // Bumped to load again without changing user or range (retry, stale data).
@@ -118,20 +121,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const endSession = useCallback(() => {
     setUserId(null)
     setMustChangePassword(false)
+    setLoginPassword(null)
     setData(null)
     setBookingDraft(null)
     setDetailsBookingId(null)
     settleWaiters()
   }, [settleWaiters])
 
+  /** Returns whether the session must change its password before going on. */
   const checkSession = useCallback(async () => {
     try {
       const id = await dataSource.getSessionUserId()
       setLoadError(null)
       setMustChangePassword(passwordChangeRequired())
       setUserId(id)
+      return id !== null && passwordChangeRequired()
     } catch (err) {
       setLoadError(errorMessage(err))
+      return false
     }
   }, [])
 
@@ -342,11 +349,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         onChange={async (currentPassword, newPassword) => {
           await auth.changePassword(currentPassword, newPassword)
           setMustChangePassword(false)
+          setLoginPassword(null)
           setReloadKey((k) => k + 1)
         }}
         onLogout={() => {
           auth.logout().finally(endSession)
         }}
+        loginPassword={loginPassword ?? undefined}
       />
     )
   }
@@ -357,7 +366,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       <LoginPage
         onLogin={async (email, password) => {
           await login(email, password)
-          await checkSession()
+          // Set before the session check renders the password change page, which reads it once,
+          // and forgotten unless that page is next (no change needed, or the check failed).
+          setLoginPassword(password)
+          if (!(await checkSession())) setLoginPassword(null)
         }}
       />
     )

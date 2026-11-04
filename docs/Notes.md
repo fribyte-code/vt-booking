@@ -73,5 +73,5 @@ Status for hvert spørsmål står i `docs/OPEN_QUESTIONS.md`.
 
 - Mottar søknad, aksepterte. Logg for de. Mye av arbeidet er han så legger inn. Mer skjema accept. Ønsker en logg for hva han legger inn også. Litt usikker her. Vente.
 - Ønsker en chat funksjon, private chatter -Lav priotering
-- Ved opprettelse av bruker, ta vekk at man må skrive næverandre passord igjen.
+- Ved opprettelse av bruker, ta vekk at man må skrive næverandre passord igjen. x
 - Slette demo versionen fra lokalt?

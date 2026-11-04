@@ -467,4 +467,24 @@ describe('API data source', () => {
       vi.unstubAllGlobals()
     }
   })
+
+  it('forgets that a password change was required once the session is gone', async () => {
+    let me: () => Response = () => json(200, { ...ME, mustChangePassword: true })
+    const { client } = fakeServer({
+      'GET /api/me': () => me(),
+      'POST /api/auth/logout': () => new Response(null, { status: 204 }),
+    })
+    const source = createApiDataSource(client)
+
+    await source.getSessionUserId()
+    expect(source.auth.passwordChangeRequired()).toBe(true)
+    await source.auth.logout()
+    expect(source.auth.passwordChangeRequired()).toBe(false)
+
+    await source.getSessionUserId()
+    expect(source.auth.passwordChangeRequired()).toBe(true)
+    me = () => json(401, {})
+    await source.getSessionUserId()
+    expect(source.auth.passwordChangeRequired()).toBe(false)
+  })
 })
