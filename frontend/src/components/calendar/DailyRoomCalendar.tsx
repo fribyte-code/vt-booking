@@ -2,9 +2,10 @@ import { Hourglass, Repeat } from 'lucide-react'
 import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { cn } from '../../lib/cn'
 import { tint } from '../../lib/color'
-import { formatTimeRange } from '../../lib/dates'
+import { crossesMidnight, formatTimeRange } from '../../lib/dates'
 import { roomInfo } from '../../lib/rooms'
 import type { Booking, Organization, Room } from '../../types'
+import { NightBadge } from '../booking/badges'
 
 /** Hours shown when the day has nothing outside them; the range grows to fit earlier or later bookings. */
 const DEFAULT_START_HOUR = 8
@@ -290,8 +291,9 @@ function BookingBlock({
 }) {
   const { booking } = item
   const pending = booking.status === 'PENDING'
+  const night = crossesMidnight(booking.start, booking.end)
   const time = formatTimeRange(booking.start, booking.end)
-  const label = `${booking.title}, ${time}, ${roomName}${pending ? ', venter på godkjenning' : ''}${booking.seriesId ? ', gjentakende' : ''}`
+  const label = `${booking.title}, ${time}, ${roomName}${pending ? ', venter på godkjenning' : ''}${booking.seriesId ? ', gjentakende' : ''}${night ? ', nattbooking' : ''}`
   return (
     <button
       type="button"
@@ -301,7 +303,7 @@ function BookingBlock({
         e.stopPropagation()
         onClick(booking.id)
       }}
-      className="absolute z-[5] flex min-w-0 flex-col overflow-hidden rounded-md px-1.5 py-1 text-left text-xs leading-snug shadow-[0_0_0_1px_white] transition-[filter] hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600"
+      className="@container absolute z-[5] flex min-w-0 flex-col overflow-hidden rounded-md px-1.5 py-1 text-left text-xs leading-snug shadow-[0_0_0_1px_white] transition-[filter] hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600"
       style={{
         left: `${left}%`,
         width: `${width}%`,
@@ -322,9 +324,12 @@ function BookingBlock({
         <span className="truncate">{booking.title}</span>
         {booking.seriesId && <Repeat className="size-3 shrink-0 opacity-80" />}
       </span>
-      <span className="truncate opacity-90">
-        {time}
-        {organization && ` · ${organization.name}`}
+      <span className="flex min-w-0 items-center gap-1">
+        {night && <NightBadge compact onColor={!pending} labelClassName="hidden @[14rem]:inline" />}
+        <span className="truncate opacity-90">
+          {time}
+          {organization && ` · ${organization.name}`}
+        </span>
       </span>
     </button>
   )

@@ -226,13 +226,12 @@ function renderEvent(arg: EventContentArg) {
         {pending && <Hourglass className="size-3 shrink-0" />}
         <span className="truncate">{booking.title}</span>
         {booking.seriesId && <Repeat className="size-3 shrink-0 opacity-80" />}
-        {night && (
-          <span className="ml-auto shrink-0">
-            <NightBadge onColor labelClassName="hidden @[10rem]:inline" />
-          </span>
-        )}
       </span>
-      <span className="truncate opacity-90">{time}</span>
+      {/* The night marker sits on the left: an overlapping booking can cover this one's right side. */}
+      <span className="flex min-w-0 items-center gap-1">
+        {night && <NightBadge compact onColor={!pending} labelClassName="hidden @[12rem]:inline" />}
+        <span className="truncate opacity-90">{time}</span>
+      </span>
       <span className="truncate opacity-85">
         {roomName}
         {organization && ` · ${organization.name}`}
