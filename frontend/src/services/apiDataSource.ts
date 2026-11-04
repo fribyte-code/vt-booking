@@ -188,7 +188,10 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
         sessionMe = me
       } catch (err) {
         sessionMe = null
-        if ((err as { code?: string }).code === 'UNAUTHENTICATED') return (userId = null)
+        if ((err as { code?: string }).code === 'UNAUTHENTICATED') {
+          mustChangePassword = false
+          return (userId = null)
+        }
         throw err
       }
       return userId
@@ -352,6 +355,7 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
       async logout() {
         await api.logout()
         userId = null
+        mustChangePassword = false
         sessionMe = null
       },
       passwordChangeRequired: () => mustChangePassword,

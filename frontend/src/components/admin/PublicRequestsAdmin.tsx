@@ -5,7 +5,7 @@ import { cn } from '../../lib/cn'
 import { crossesMidnight, formatDate, formatDateTime, formatTimeRange } from '../../lib/dates'
 import { errorMessage } from '../../lib/errors'
 import { adminApi, type PublicRequest } from '../../services/adminApi'
-import { preferredAreaLabel, roomForArea } from '../../services/publicRequests'
+import { preferredAreaLabel, replyMailto, roomForArea } from '../../services/publicRequests'
 import { EmptyState } from '../booking/BookingListItem'
 import { NightBadge } from '../booking/badges'
 import { Button } from '../ui/Button'
@@ -137,6 +137,9 @@ export function PublicRequestsAdmin() {
 }
 
 function RequestItem({ request: r, actions }: { request: PublicRequest; actions?: ReactNode }) {
+  const app = useApp()
+  // The admin made the booking, so it is among their own loaded bookings (the last 90 days and on).
+  const booking = r.bookingId ? app.data.bookings.find((b) => b.id === r.bookingId) : undefined
   const [expanded, setExpanded] = useState(false)
   const [now] = useState(() => Date.now())
   // Whether the collapsed description is cut off: only then is there anything to expand.
@@ -172,7 +175,11 @@ function RequestItem({ request: r, actions }: { request: PublicRequest; actions?
           <Detail label="Organisasjon">{r.organizationName}</Detail>
           <Detail label="Arrangementets navn">{r.eventName}</Detail>
           <Detail label="Kontakt-e-post">
-            <a href={`mailto:${r.email}`} className="text-blue-700 hover:underline">
+            <a
+              href={replyMailto(r, booking && { roomName: app.roomOf(booking).name, start: booking.start, end: booking.end })}
+              className="text-blue-700 hover:underline"
+              title="Åpner et ferdig utfylt svar i e-postprogrammet"
+            >
               {r.email}
             </a>
           </Detail>

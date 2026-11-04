@@ -7,18 +7,25 @@ import { Alert, Field, Input } from '../ui/fields'
 export const MIN_PASSWORD_LENGTH = 8
 export const MAX_PASSWORD_LENGTH = 128
 
-/** Current password, new password twice. The server enforces the real rules; this only catches typos early. */
+/**
+ * Current password, new password twice. The server enforces the real rules; this only catches typos
+ * early. With `knownCurrentPassword` (just typed at login) the current password isn't asked for
+ * again, unless the server refuses it.
+ */
 export function ChangePasswordForm({
   onSubmit,
   submitLabel,
   extraActions,
+  knownCurrentPassword,
 }: {
   onSubmit: (currentPassword: string, newPassword: string) => Promise<void>
   submitLabel: string
   extraActions?: ReactNode
+  knownCurrentPassword?: string
 }) {
   const id = useId()
-  const [current, setCurrent] = useState('')
+  const [current, setCurrent] = useState(knownCurrentPassword ?? '')
+  const [askCurrent, setAskCurrent] = useState(!knownCurrentPassword)
   const [next, setNext] = useState('')
   const [repeat, setRepeat] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -37,14 +44,18 @@ export function ChangePasswordForm({
     } catch (err) {
       setError(errorMessage(err))
       setBusy(false)
+      // If the remembered password was refused, let the user type it.
+      setAskCurrent(true)
     }
   }
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Field label="Nåværende passord" htmlFor={`${id}-current`}>
-        <Input id={`${id}-current`} type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
-      </Field>
+      {askCurrent && (
+        <Field label="Nåværende passord" htmlFor={`${id}-current`}>
+          <Input id={`${id}-current`} type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
+        </Field>
+      )}
       <Field label="Nytt passord" htmlFor={`${id}-new`} hint={`${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} tegn.`}>
         <Input id={`${id}-new`} type="password" autoComplete="new-password" required value={next} onChange={(e) => setNext(e.target.value)} />
       </Field>

@@ -6,9 +6,12 @@ import { Button } from '../components/ui/Button'
 export function ChangePasswordPage({
   onChange,
   onLogout,
+  loginPassword,
 }: {
   onChange: (currentPassword: string, newPassword: string) => Promise<void>
   onLogout: () => void
+  /** The temporary password just used to log in, so it isn't asked for again. */
+  loginPassword?: string
 }) {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-slate-50 px-4">
@@ -31,6 +34,7 @@ export function ChangePasswordPage({
         <ChangePasswordForm
           onSubmit={onChange}
           submitLabel="Lagre og fortsett"
+          knownCurrentPassword={loginPassword}
           extraActions={
             <Button variant="ghost" onClick={onLogout}>
               Logg ut
