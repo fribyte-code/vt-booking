@@ -38,15 +38,25 @@ export function PermissionBadge({ permission, short }: { permission: Permission;
 
 /**
  * Marks a booking that goes past midnight. `onColor` is for the calendar, where it sits on the
- * room color; `labelClassName` lets the calendar hide the text when the event is narrow.
+ * room color; `compact` keeps it within one line of text; `labelClassName` lets the calendar hide
+ * the text when the event is narrow.
  */
-export function NightBadge({ onColor, labelClassName }: { onColor?: boolean; labelClassName?: string }) {
+export function NightBadge({
+  onColor,
+  compact,
+  labelClassName,
+}: {
+  onColor?: boolean
+  compact?: boolean
+  labelClassName?: string
+}) {
   return (
     <span
       title="Går over midnatt"
       className={cn(
         pill,
         onColor ? 'bg-white/90 px-1.5 text-orange-700 ring-white/40' : 'bg-orange-50 text-orange-700 ring-orange-600/20',
+        compact && 'shrink-0 py-0! leading-4',
       )}
     >
       <Moon className="size-3 shrink-0" aria-hidden />
