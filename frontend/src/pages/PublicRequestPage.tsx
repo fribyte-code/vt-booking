@@ -94,8 +94,9 @@ export function PublicRequestPage() {
       setError('Fyll ut alle feltene.')
       return
     }
-    if (start === end) {
-      setError('Sluttidspunktet må være etter starttidspunktet.')
+    // An end time at or before the start time means the next day, so equal times would be 24 hours.
+    if (startTime === endTime) {
+      setError('Starttidspunkt og sluttidspunkt kan ikke være like.')
       return
     }
     setBusy(true)
