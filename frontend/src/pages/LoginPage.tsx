@@ -1,4 +1,4 @@
-import { CalendarRange } from 'lucide-react'
+import { CalendarRange, FileText } from 'lucide-react'
 import { type FormEvent, useId, useState } from 'react'
 import { Button } from '../components/ui/Button'
 import { Alert, Field, Input } from '../components/ui/fields'
@@ -28,7 +28,7 @@ export function LoginPage({ onLogin }: { onLogin: (email: string, password: stri
   }
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-slate-50 px-4">
+    <main className="flex min-h-dvh flex-col items-center justify-center bg-slate-50 px-4">
       <form onSubmit={submit} className="w-full max-w-sm space-y-5 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
         <div className="flex items-center gap-2.5">
           <span className="flex size-9 items-center justify-center rounded-xl bg-slate-900 text-white">
@@ -65,6 +65,17 @@ export function LoginPage({ onLogin }: { onLogin: (email: string, password: stri
           {busy ? 'Logger inn …' : 'Logg inn'}
         </Button>
       </form>
+      <div className="mt-4 w-full max-w-sm space-y-2 text-center">
+        <p className="text-sm text-slate-600">Uten konto? Søk om å låne fellesareal i Studentvillaen.</p>
+        {/* Styled like a secondary Button; a link, since the form is a page of its own. */}
+        <a
+          href="/soknad"
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-white text-sm font-medium text-slate-800 shadow-sm ring-1 ring-slate-300 ring-inset transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+        >
+          <FileText className="size-4" />
+          Søknadsskjema
+        </a>
+      </div>
     </main>
   )
 }

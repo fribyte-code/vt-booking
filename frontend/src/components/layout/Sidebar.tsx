@@ -34,7 +34,8 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { pathname } = useLocation()
 
   const open = data.bookings.filter((b) => b.status === 'PENDING' && !isExpiredRequest(b))
-  const pendingCount = open.length
+  // Booking requests to approve plus new requests from the public form.
+  const pendingCount = open.length + (data.newPublicRequests ?? 0)
   const myPendingCount = open.filter((b) => b.requestedById === currentUser.id).length
   const onCalendar = pathname === '/'
 

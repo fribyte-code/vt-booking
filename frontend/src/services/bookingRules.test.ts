@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { combineEnd } from '../lib/dates'
 import type { AppData, Booking, Room, User } from '../types'
-import { canChangeBooking, evaluateBooking, evaluateEdit, isExpiredRequest, matchesRequestFilter } from './bookingRules'
+import { canChangeBooking, evaluateBooking, evaluateEdit, isExpiredRequest, matchesRequestFilter, roomsOnBehalf } from './bookingRules'
 
 const NOW = new Date('2030-01-01T10:00:00Z')
 const HOUR = 3_600_000
@@ -13,6 +13,28 @@ const data = (rooms = [room], bookings: Booking[] = []): AppData => ({ users: [u
 const input = (start: number, end: number) => ({ roomId: 'r', organizationId: 'org', title: 'Møte', start: at(start), end: at(end) })
 
 describe('bookingRules', () => {
+  it('lets an admin book a public request for an organization without access, but not in a closed room', () => {
+    const admin: User = { ...user, role: 'ADMIN', organizationIds: [] }
+    const noAccess = input(1, 2)
+    const other = { ...noAccess, organizationId: 'other' }
+    // The normal rules refuse it.
+    expect(evaluateBooking(data(), { ...admin, organizationIds: ['other'] }, other, NOW)).toMatchObject({ code: 'NO_PERMISSION' })
+
+    const onBehalf = roomsOnBehalf(
+      [room, { ...room, id: 'closed', status: 'DISABLED' }, { ...room, id: 'apply', permissions: { org: 'REQUEST' } }],
+      ['org', 'other'],
+    )
+    expect(onBehalf[0].permissions).toEqual({ org: 'DIRECT', other: 'DIRECT' })
+    // Even where the organization must apply, the admin's booking is approved directly.
+    expect(onBehalf[2].permissions).toEqual({ org: 'DIRECT', other: 'DIRECT' })
+    expect(evaluateBooking(data(onBehalf), { ...admin, organizationIds: ['other'] }, other, NOW)).toMatchObject({ ok: true, permission: 'DIRECT' })
+    expect(evaluateBooking(data(onBehalf), { ...admin, organizationIds: ['other'] }, { ...other, roomId: 'closed' }, NOW)).toMatchObject({
+      code: 'NO_PERMISSION',
+    })
+    // The original rooms are unchanged.
+    expect(room.permissions).toEqual({ org: 'DIRECT' })
+  })
+
   it('treats a pending request as expired once it has started', () => {
     const request = { status: 'PENDING' as const, start: at(1) }
     expect(isExpiredRequest(request, NOW.getTime())).toBe(false)

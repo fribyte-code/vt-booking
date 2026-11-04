@@ -80,14 +80,35 @@ public class BookingService {
 
     @Transactional
     public BookingResponse create(User actor, CreateBookingRequest request) {
+        return create(actor, request, true);
+    }
+
+    /**
+     * A system admin booking on behalf of any active organization, e.g. when turning a request from
+     * the public form into a booking: membership and room access are not needed, and the booking is
+     * approved directly, whatever the organization's access (which is not changed). Closed rooms,
+     * times and conflicts are checked as in {@link #create}.
+     */
+    @Transactional
+    public BookingResponse createOnBehalf(User actor, CreateBookingRequest request) {
+        if (!actor.isSystemAdmin()) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "Bare systemadministratorer har tilgang.");
+        }
+        return create(actor, request, false);
+    }
+
+    private BookingResponse create(User actor, CreateBookingRequest request, boolean requireMembership) {
         Instant start = request.start().toInstant();
         Instant end = request.end().toInstant();
         Instant now = clock.instant();
         validateTimes(start, end, now);
 
-        Organization organization = requireMembership(actor, request.organizationId(), true);
+        Organization organization = requireMembership
+                ? requireMembership(actor, request.organizationId(), true)
+                : organizations.findByIdForBooking(request.organizationId())
+                        .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Organisasjonen finnes ikke."));
         Room room = lockBookableRoom(request.roomId());
-        Permission permission = requirePermission(room, organization);
+        Permission permission = requireMembership ? requirePermission(room, organization) : permissionOnBehalf(room, organization);
 
         // Requests for an already confirmed slot are refused too, as in the prototype. The room
         // lock makes this check reliable; the exclusion constraint remains the final guarantee.
@@ -285,6 +306,14 @@ public class BookingService {
                     organization.getName() + " har ikke tilgang til å booke " + room.getName() + ".");
         }
         return permission;
+    }
+
+    /** For {@link #createOnBehalf}: the admin's booking is the decision, so an open room is always DIRECT. */
+    private Permission permissionOnBehalf(Room room, Organization organization) {
+        if (room.getStatus() != RoomStatus.ACTIVE || !organization.isActive()) {
+            return requirePermission(room, organization);
+        }
+        return Permission.DIRECT;
     }
 
     /** Inserts new bookings, turning an exclusion-constraint violation into CONFLICT. */

@@ -23,6 +23,14 @@ export interface BookingDraft {
   roomId?: string
   /** Edit this booking instead of creating a new one. */
   bookingId?: string
+  title?: string
+  description?: string
+  /**
+   * Book for a request from the public form: an admin picks any organization, and the request is
+   * marked as transferred in the same server call. `onCreated` runs after the booking is made.
+   */
+  publicRequestId?: string
+  onCreated?: () => void
 }
 
 export type ToastTone = 'success' | 'error' | 'info'

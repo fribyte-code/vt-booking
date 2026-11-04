@@ -25,8 +25,11 @@ const OrganizationsAdmin = lazy(() =>
   import('../components/admin/OrganizationsAdmin').then((m) => ({ default: m.OrganizationsAdmin })),
 )
 const RoomsAdmin = lazy(() => import('../components/admin/RoomsAdmin').then((m) => ({ default: m.RoomsAdmin })))
+const PublicRequestsAdmin = lazy(() =>
+  import('../components/admin/PublicRequestsAdmin').then((m) => ({ default: m.PublicRequestsAdmin })),
+)
 
-type TabId = 'pending' | 'processed' | 'users' | 'organizations' | 'rooms'
+type TabId = 'pending' | 'processed' | 'public' | 'users' | 'organizations' | 'rooms'
 
 export function AdminPage() {
   const app = useApp()
@@ -71,6 +74,7 @@ export function AdminPage() {
           tabs={[
             { id: 'pending', label: 'Ventende søknader', count: pending.length },
             { id: 'processed', label: 'Behandlet', count: processed.length },
+            { id: 'public', label: 'Forespørsler', count: app.data.newPublicRequests || undefined },
             { id: 'users', label: 'Brukere' },
             { id: 'organizations', label: 'Organisasjoner' },
             { id: 'rooms', label: 'Rom og tilganger' },
@@ -101,6 +105,7 @@ export function AdminPage() {
           {tab === 'pending' && !noMatches && <PendingList bookings={matching} />}
           {tab === 'processed' && !noMatches && <ProcessedList bookings={matching} />}
           <Suspense fallback={<p className="text-sm text-slate-500">Laster …</p>}>
+            {tab === 'public' && <PublicRequestsAdmin />}
             {tab === 'users' && <UsersAdmin />}
             {tab === 'organizations' && <OrganizationsAdmin />}
             {tab === 'rooms' && <RoomsAdmin />}

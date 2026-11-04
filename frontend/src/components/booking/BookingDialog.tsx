@@ -15,8 +15,10 @@ import {
   toTimeInput,
 } from '../../lib/dates'
 import { errorMessage } from '../../lib/errors'
+import { adminApi } from '../../services/adminApi'
+import { organizationsForRequest } from '../../services/publicRequests'
 import { BookingError } from '../../services/bookingError'
-import { evaluateBooking, evaluateEdit, getPermission, type RuleResult, type EditResult } from '../../services/bookingRules'
+import { evaluateBooking, evaluateEdit, getPermission, roomsOnBehalf, type RuleResult, type EditResult } from '../../services/bookingRules'
 import type { Booking, CreateSeriesInput, Organization, SeriesUpdated } from '../../types'
 import { Button } from '../ui/Button'
 import { Alert, Field, Input, Select, Textarea } from '../ui/fields'
@@ -93,9 +95,14 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
   const { data, currentUser, visibleRoomIds } = app
   const formId = useId()
 
+  // From a public request, an admin books for any active organization ("Eksterne" first).
+  const fromRequest = !editing ? draft.publicRequestId : undefined
+  const forRequest = fromRequest ? organizationsForRequest(data.organizations) : null
   const orgs = editing
     ? [app.organization(editing.organizationId) ?? { id: editing.organizationId, name: 'Organisasjonen', description: '' }]
-    : currentUser.organizationIds.map((id) => app.organization(id)).filter((o): o is Organization => Boolean(o))
+    : forRequest
+      ? forRequest.options
+      : currentUser.organizationIds.map((id) => app.organization(id)).filter((o): o is Organization => Boolean(o))
 
   const initialStart = editing ? new Date(editing.start) : draft.start ? new Date(draft.start) : defaultStart()
   const initialEnd = editing
@@ -103,22 +110,27 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
     : draft.end
       ? new Date(draft.end)
       : new Date(initialStart.getTime() + 3_600_000)
-  const initialOrg = orgs[0]?.id ?? ''
+  // Booking a public request, the admin needs no access to the room (the server checks the same).
+  const rooms = fromRequest ? roomsOnBehalf(data.rooms, orgs.map((o) => o.id)) : data.rooms
+  const roomById = (id: string) => rooms.find((r) => r.id === id)
+  // A public request goes to "Eksterne" unless the admin picks another; without it, nothing is preselected.
+  const initialOrg = forRequest ? forRequest.preselected : (orgs[0]?.id ?? '')
+  // An empty draft.roomId (a public request without a matching room) leaves the choice to the user.
   const initialRoom =
     editing?.roomId ??
     draft.roomId ??
-    [...data.rooms]
+    [...rooms]
       .sort((a, b) => Number(visibleRoomIds.includes(b.id)) - Number(visibleRoomIds.includes(a.id)))
       .find((r) => getPermission(r, initialOrg) !== 'NONE')?.id ??
-    data.rooms[0]?.id
+    rooms[0]?.id
 
   const [date, setDate] = useState(toDateInput(initialStart))
   const [startTime, setStartTime] = useState(toTimeInput(initialStart))
   const [endTime, setEndTime] = useState(toTimeInput(initialEnd))
   const [organizationId, setOrganizationId] = useState(initialOrg)
   const [roomId, setRoomId] = useState(initialRoom)
-  const [title, setTitle] = useState(editing?.title ?? '')
-  const [description, setDescription] = useState(editing?.description ?? '')
+  const [title, setTitle] = useState(editing?.title ?? draft.title ?? '')
+  const [description, setDescription] = useState(editing?.description ?? draft.description ?? '')
   const [interval, setIntervalWeeks] = useState(0)
   const [until, setUntil] = useState(() => weeksLater(toDateInput(initialStart), 8))
   const [skipConflicts, setSkipConflicts] = useState(false)
@@ -167,15 +179,17 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
     start,
     end,
   }
-  const room = app.room(roomId)
+  const room = roomById(roomId)
   const permission = getPermission(room, organizationId)
-  const checkData = dayBookings ? { ...data, bookings: dayBookings } : data
-  const repeating = !editing && interval > 0
+  const checkData = { ...data, rooms, bookings: dayBookings ?? data.bookings }
+  // The server lets an admin book a public request for any organization, so the live check does too.
+  const checkUser = fromRequest ? { ...currentUser, organizationIds: [organizationId] } : currentUser
+  const repeating = !editing && !fromRequest && interval > 0
   // Live check ignores the title so the form doesn't nag before the user has typed it. It uses the
   // day's bookings once they are loaded; the server checks again when the booking is sent.
   const live: RuleResult | EditResult = editing
     ? evaluateEdit(checkData, currentUser, editing, { ...input, title: title || '-' })
-    : evaluateBooking(checkData, currentUser, { ...input, title: title || '-' })
+    : evaluateBooking(checkData, checkUser, { ...input, title: title || '-' })
   // In a series, a taken first date is shown in the preview and can be skipped like the others.
   const blocking = !live.ok && !(repeating && live.code === 'CONFLICT')
 
@@ -203,8 +217,8 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
 
   const changeOrganization = (id: string) => {
     setOrganizationId(id)
-    if (getPermission(app.room(roomId), id) === 'NONE') {
-      const alternative = data.rooms.find((r) => getPermission(r, id) !== 'NONE')
+    if (roomId && getPermission(roomById(roomId), id) === 'NONE') {
+      const alternative = rooms.find((r) => getPermission(r, id) !== 'NONE')
       if (alternative) setRoomId(alternative.id)
     }
   }
@@ -275,6 +289,21 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
       return
     }
 
+    if (fromRequest) {
+      await run(async () => {
+        const booking = await adminApi.createBookingFromRequest(fromRequest, input)
+        app.notify(
+          booking.status === 'APPROVED'
+            ? `${room?.name} er booket, og forespørselen er overført.`
+            : `Bookingen er opprettet som en søknad som venter på godkjenning, og forespørselen er overført.`,
+        )
+        draft.onCreated?.()
+        app.reload()
+        app.closeBookingDialog()
+      })
+      return
+    }
+
     await run(async () => {
       const booking = await app.createBooking(input)
       app.notify(
@@ -323,7 +352,7 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
     )
   }
 
-  const dialogTitle = editing ? 'Endre booking' : isRequest ? 'Søk om rom' : 'Ny booking'
+  const dialogTitle = editing ? 'Endre booking' : fromRequest ? 'Opprett booking fra forespørsel' : isRequest ? 'Søk om rom' : 'Ny booking'
   const toBook = occurrences.length - (skipConflicts ? taken : 0)
   const count = toBook > 0 ? ` ${toBook}` : ''
   const submitLabel = editing
@@ -422,7 +451,7 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
           </p>
         )}
 
-        {!editing && orgs.length > 0 && (
+        {!editing && !fromRequest && orgs.length > 0 && (
           <div className="grid grid-cols-2 gap-3">
             <Field label="Gjenta" htmlFor={`${formId}-repeat`}>
               <Select id={`${formId}-repeat`} value={interval} onChange={(e) => setIntervalWeeks(Number(e.target.value))}>
@@ -454,16 +483,25 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
           </Alert>
         ) : (
           <Field
-            label={editing ? 'Booket på vegne av' : 'Book på vegne av'}
+            label={editing ? 'Booket på vegne av' : fromRequest ? 'Organisasjon' : 'Book på vegne av'}
             htmlFor={`${formId}-org`}
-            hint={editing ? 'Organisasjonen kan ikke endres.' : orgs.length === 1 ? 'Du er medlem av én organisasjon.' : undefined}
+            hint={
+              editing
+                ? 'Organisasjonen kan ikke endres.'
+                : fromRequest
+                  ? 'Organisasjonen bookingen skal tilhøre.'
+                  : orgs.length === 1
+                    ? 'Du er medlem av én organisasjon.'
+                    : undefined
+            }
           >
             <Select
               id={`${formId}-org`}
               value={organizationId}
               onChange={(e) => changeOrganization(e.target.value)}
-              disabled={orgs.length === 1}
+              disabled={orgs.length === 1 && !fromRequest}
             >
+              {!organizationId && <option value="">Velg organisasjon</option>}
               {orgs.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name}
@@ -481,7 +519,7 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
           <fieldset className="space-y-1.5">
             <legend className="mb-1.5 text-sm font-medium text-slate-700">Rom</legend>
             <div className="grid gap-2">
-              {data.rooms.map((r) => {
+              {rooms.map((r) => {
                 const p = getPermission(r, organizationId)
                 const selected = r.id === roomId
                 const closed = r.status === 'DISABLED'
@@ -594,6 +632,8 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
   }
 
   function renderFeedback() {
+    if (!organizationId) return <Alert tone="info">Velg organisasjon.</Alert>
+    if (!roomId) return <Alert tone="info">Velg rom.</Alert>
     if (!live.ok) {
       if (!blocking) return null
       return (
