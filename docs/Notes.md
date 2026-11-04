@@ -66,7 +66,9 @@ Status for hvert spørsmål står i `docs/OPEN_QUESTIONS.md`.
 - Kunne filtrere på åpne søknader, osv rom, hvem som er der osv x
 
 - Kan kunne legge inn en søknad anonymt, også uten å logge inn. Kulturstyre nettside skjema. Samme felter 
+
 - rom moderator. Ny rolle. Enkelt rom eller flerne rom. Rolle. Ansvar for noen rom - Middels 
+
 - Over 2 uker gamlet, auto hide. Bookiner default hidden men kanskje der uansett 
 
 - Mottar søknad, aksepterte. Logg for de. Mye av arbeidet er han så legger inn. Mer skjema accept. Ønsker en logg for hva han legger inn også. Litt usikker her. Vente.

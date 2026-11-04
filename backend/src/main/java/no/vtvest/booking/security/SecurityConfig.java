@@ -52,6 +52,8 @@ class SecurityConfig {
         http
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
+                        // The public booking request form (/soknad). CSRF still applies.
+                        .requestMatchers(HttpMethod.POST, "/api/public/requests").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .csrf(csrf -> csrf.spa().csrfTokenRepository(csrfCookies))

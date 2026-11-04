@@ -202,13 +202,14 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
       const { start, end } = clamp(range)
       const query = new URLSearchParams({ from: start, to: end })
 
-      const [rooms, organizations, calendar, mine, requests, invitations] = await Promise.all([
+      const [rooms, organizations, calendar, mine, requests, invitations, publicRequests] = await Promise.all([
         api.get<RoomResponse[]>('/api/rooms'),
         api.get<{ id: string; name: string }[]>('/api/organizations'),
         api.get<BookingResponse[]>(`/api/bookings?${query}`),
         api.get<BookingResponse[]>('/api/bookings/mine'),
         isAdmin ? api.get<BookingResponse[]>('/api/bookings/requests') : Promise.resolve([]),
         api.get<Invitation[]>('/api/me/invitations'),
+        isAdmin ? api.get<{ status: string }[]>('/api/admin/public-requests') : Promise.resolve(null),
       ])
 
       const seenUntil = readSeen(me.id)
@@ -226,7 +227,7 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
       // Archived organizations are left out of the directory but may still own bookings.
       for (const b of [...calendar, ...mine, ...requests]) {
         if (!orgs.has(b.organizationId) && b.organizationName) {
-          orgs.set(b.organizationId, { id: b.organizationId, name: b.organizationName, description: '' })
+          orgs.set(b.organizationId, { id: b.organizationId, name: b.organizationName, description: '', archived: true })
         }
       }
 
@@ -237,6 +238,7 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
         rooms: rooms.map(toRoom),
         bookings: [...bookings.values()],
         invitations,
+        newPublicRequests: publicRequests?.filter((r) => r.status === 'NEW').length,
       } satisfies AppData
     },
 

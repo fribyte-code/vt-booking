@@ -45,7 +45,7 @@ Conventions:
 - **Brute force:** `LoginThrottle` answers 429 after 5 failed logins per email or 30 per IP address within 15 minutes. Every failed login gets the same bodiless 401.
 - **Client address:** Nginx decides it and sends it as a single `X-Forwarded-For` value, dropping anything the client sent. It is the TCP peer, or, only for requests from the reverse proxy named in `TRUSTED_PROXY` (`compose.prod.yaml`, via `frontend/real-ip.conf.template`), the address in that proxy's header. Tomcat accepts the header only from private-network peers, so the API port must never be published. `ProxyClientAddressIntegrationTest` runs the real Nginx config in front of the API.
 - **Session lifetime:** 8 hours idle. Sessions and the throttle are kept in memory, so the API runs as a single instance and a restart logs everyone out.
-- **First administrator:** `java -jar app.jar bootstrap-admin` (or `make bootstrap-admin`). It prompts in the terminal, starts without a web server, and refuses once any SYSTEM_ADMIN exists. There is no HTTP endpoint for it, no development login and no seed data.
+- **First administrator:** `java -jar app.jar bootstrap-admin` (or `make bootstrap-admin`). It prompts in the terminal, starts without a web server, and refuses once any SYSTEM_ADMIN exists. There is no HTTP endpoint for it, no development login and no seed data, apart from the shared organization "Eksterne" for public requests (migration V7).
 - **Everyone else** is created by an administrator: a SYSTEM_ADMIN (`POST /api/admin/users`), or an ORG_ADMIN adding a new email to their organization. Adding an existing account as an ORG_ADMIN creates an in-app invitation that the user accepts or declines.
 
 ## 4. Roles and authorization
@@ -84,7 +84,7 @@ Organization admins can add members (a new email creates an account; an existing
 
 ## 7. Data model
 
-Tables: `users`, `organizations`, `memberships`, `membership_invitations`, `rooms`, `room_access`, `bookings`. Migrations are in `backend/src/main/resources/db/migration` (Flyway; applied migrations are never edited). There is no audit log or session table.
+Tables: `users`, `organizations`, `memberships`, `membership_invitations`, `rooms`, `room_access`, `bookings`, `public_requests` (requests for Studentvillaen's common areas Festplassen and Torgallmenningen from the public form `/soknad`, handled by a SYSTEM_ADMIN in Administrasjon → Forespørsler). Migrations are in `backend/src/main/resources/db/migration` (Flyway; applied migrations are never edited). There is no audit log or session table.
 
 Integrity in the schema:
 

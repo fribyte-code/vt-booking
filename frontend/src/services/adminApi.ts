@@ -1,5 +1,6 @@
-import type { BookingStatus, Permission } from '../types'
+import type { BookingStatus, CreateBookingInput, Permission } from '../types'
 import { createApiClient } from './apiClient'
+import type { PreferredArea } from './publicRequests'
 
 /**
  * User, organization and room management against the Spring Boot API. The server enforces
@@ -79,6 +80,25 @@ export interface OrgInvitation {
   createdAt: string
 }
 
+export type PublicRequestStatus = 'NEW' | 'TRANSFERRED' | 'REJECTED'
+
+/** A booking request for Studentvillaen sent from the public form (/soknad). */
+export interface PublicRequest {
+  id: string
+  email: string
+  organizationName: string
+  eventName: string
+  memberOfKulturstyretOrSamfunnet: boolean
+  preferredArea: PreferredArea
+  start: string
+  end: string
+  description: string
+  needsVillaGuard: boolean
+  status: PublicRequestStatus
+  createdAt: string
+  bookingId: string | null
+}
+
 /** ADDED: the person is a member now (`temporaryPassword` when a new account was created). INVITED: they must accept first. */
 export type AddMemberResult =
   | { result: 'ADDED'; member: Member; temporaryPassword: string | null }
@@ -119,6 +139,12 @@ export const adminApi = {
   },
   setRoomAccess: (roomId: string, organizationId: string, permission: Permission | null) =>
     api.put<AdminRoom>(`/api/admin/rooms/${id(roomId)}/access/${id(organizationId)}`, { permission }),
+
+  publicRequests: () => api.get<PublicRequest[]>('/api/admin/public-requests'),
+  rejectPublicRequest: (requestId: string) => api.post<PublicRequest>(`/api/admin/public-requests/${id(requestId)}/reject`),
+  /** Creates the booking with the normal rules and marks the request as transferred, in one call. */
+  createBookingFromRequest: (requestId: string, input: CreateBookingInput) =>
+    api.post<{ id: string; status: BookingStatus }>(`/api/admin/public-requests/${id(requestId)}/booking`, input),
 
   /** Future approved bookings and open requests in a room, of an organization, or requested by a user. */
   futureBookings: (kind: 'rooms' | 'organizations' | 'users', targetId: string) =>

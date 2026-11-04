@@ -123,7 +123,7 @@ describe('API data source', () => {
     expect(calls.some((c) => c.path.startsWith('/api/admin') || c.path === '/api/bookings/requests')).toBe(false)
   })
 
-  it('treats SYSTEM_ADMIN as an administrator and loads the request queue, but not the user list', async () => {
+  it('treats SYSTEM_ADMIN as an administrator and loads the request queues, but not the user list', async () => {
     const admin = { ...ME, id: 'u-admin', globalRole: 'SYSTEM_ADMIN', memberships: [] }
     const { client, calls } = fakeServer({
       'GET /api/me': () => json(200, admin),
@@ -132,14 +132,17 @@ describe('API data source', () => {
       'GET /api/bookings': () => json(200, []),
       'GET /api/bookings/mine': () => json(200, []),
       'GET /api/bookings/requests': () => json(200, []),
+      'GET /api/admin/public-requests': () => json(200, [{ status: 'NEW' }, { status: 'TRANSFERRED' }, { status: 'NEW' }]),
     })
 
     const data = await createApiDataSource(client).load({ start: '2030-01-01T00:00:00.000Z', end: '2030-01-08T00:00:00.000Z' })
 
     expect(data.users).toEqual([expect.objectContaining({ id: 'u-admin', role: 'ADMIN' })])
     expect(calls.some((c) => c.path === '/api/bookings/requests')).toBe(true)
+    // Only the unhandled public requests are counted.
+    expect(data.newPublicRequests).toBe(2)
     // Names of other people come with the bookings; the management pages load users themselves.
-    expect(calls.some((c) => c.path.startsWith('/api/admin'))).toBe(false)
+    expect(calls.some((c) => c.path === '/api/admin/users')).toBe(false)
   })
 
   it('reuses the session check for the first load, and asks again on later loads', async () => {
@@ -307,6 +310,10 @@ describe('API data source', () => {
       seriesId: 's1',
     })
     expect(data.invitations).toEqual([invitation])
+    // Not in the directory of active organizations: known from the booking, and marked archived.
+    expect(data.organizations).toEqual([
+      { id: BOOKING.organizationId, name: BOOKING.organizationName, description: '', archived: true },
+    ])
   })
 
   it('edits a booking with its version and no identity fields', async () => {

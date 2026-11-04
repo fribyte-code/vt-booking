@@ -15,6 +15,8 @@ export interface Organization {
   id: string
   name: string
   description: string
+  /** Archived: only known because it owns loaded bookings. Can't be booked for. */
+  archived?: boolean
 }
 
 export interface User {
@@ -173,4 +175,6 @@ export interface AppData {
   bookings: Booking[]
   /** The signed-in user's pending invitations. */
   invitations?: Invitation[]
+  /** Admins only: unhandled (NEW) requests from the public form. */
+  newPublicRequests?: number
 }

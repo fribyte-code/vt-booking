@@ -43,6 +43,25 @@ export function getPermission(room: Room | undefined, organizationId: string): P
 }
 
 /**
+ * The rooms as a system admin sees them when booking a public request on behalf of an
+ * organization (the backend's `createOnBehalf`): every open room counts as DIRECT for the given
+ * organizations, so the booking is approved directly. Closed rooms stay unbookable, and no access
+ * is changed.
+ */
+export function roomsOnBehalf(rooms: Room[], organizationIds: string[]): Room[] {
+  return rooms.map((r) =>
+    r.status === 'DISABLED'
+      ? r
+      : {
+          ...r,
+          permissions: Object.fromEntries(
+            organizationIds.map((id) => [id, 'DIRECT']),
+          ),
+        },
+  )
+}
+
+/**
  * A pending request whose start has passed. It can no longer be approved or withdrawn, so it is
  * left out of the calendar and the admin queue, and shown as expired in "my bookings".
  */
