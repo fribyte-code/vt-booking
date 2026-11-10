@@ -178,3 +178,68 @@ Ikke gjort
   - Logg over hva admin legger inn.
   - Chat.
 
+
+
+
+Ferdig
+
+1. Søknadsskjemaet (/soknad)
+- Valget «Annet rom» i tillegg til Festplassen/Torgallmenningen x dobbeltsjekk.
+- Villavakt er påkrevd. Skjemaet skal informere om det, ikke spørre om det (dekker begge villavakt-punktene). x
+- Kontaktpersoner: navn, organisasjon, kortnummer (ikke studentnummer) og telefon. Én person som standard, med mulighet for å legge til flere. x
+- Liten hjelpetekst under tidspunkt om at sluttiden kan være neste dag ?? Var det ikke, ikke tekst? endre den lille tekste x
+- Feilmeldingen skal vises øverst, ikke nederst. Når en godkjenner rommene osvv.
+
+2. Arrangementer etter midnatt
+- Det må være veldig tydelig når et arrangement går over midnatt, både i skjemaet og for admin (kanskje egen "nattfane")
+- Etter midnatt trengs det også vektere, ikke bare villavakt. Dette håndteres ved at admin sender e-post til vektere x
+
+3. Behandling av forespørsler (Administrasjon → Forespørsler)
+- Egen status: ubehandlet, under arbeid, ferdig, avslått, og mulighet for å sortere og filtrere på den x
+- Flere filtre, eventuelt en visning som ligner bookinglisten, der man klikker seg inn for alle detaljene
+    filtre ja, ikke bookingliste lignende enda.
+- Kunne redigere en forespørsel etter at den er behandlet, i samme fane
+    Oppdaterer seg ikke når booking endres?
+- Undertekster som skiller «ventende søknader» (villaorganisasjonene) fra «forespørsler» (eksterne)
+
+4. Brukeradministrasjon
+- Søk og filter på navn, e-post og organisasjon, Kan ikke søke på organisasjon enda.
+
+5. Rom og grunndata
+- Engen tilhører Studentersamfunnet, så den trenger riktig organisasjon og romtilgang x
+  - "Admin"/moderator for rommet må være funksjonær i Studentersamfunnet
+- Standardrom: enten vise tydelig hvilket som er valgt, eller fjerne forvalget, visue det visuelt på den siden hvor du kan endre romtilganger.
+
+6. Ting å avklare
+- Gamle bookinger ved sletting/arkivering: dette er allerede løst. Arkivering beholder bookingene, og sletting (kun av arkiverte rom) fjerner alle bookingene i rommet. Kanskje UI-et bare må forklare det bedre.
+- E-post (mal og varsling til vektere): appen har ingen SMTP i dag, fordi det ble valgt bort i MVP-en. Begge krever derfor en arkitekturbeslutning. Alternativet er å generere en ferdig e-posttekst som admin kopierer eller åpner med mailto:. (tenker best å lage mail mal) x
+
+7. rom rolle
+- Engen skal ikke erlend få inn bookinger, men en i samfunnet (nestleder der eller noe).
+- Tilsvarende for andre ting, at noen har ansvar for egne rom, organisasjon har ansvar for rom og godtar roller.
+- Uib kantine: Kan ikke bookes før 16:30, kun (16:30 - 24:00) i hverdager, i helger (08:00 - 16:00), lørdag søndag.
+
+Ikke ferdig
+
+5. Rom og grunndata
+- Legge til Museplassen (vent til produksjon) kanskje lage en oversikt over hvordan rommene vil se ut?
+
+6. Ting å avklare
+- «Endre mail-malen etter hvert» høres selv ut som noe som kan vente.
+
+7. rom rolle
+- Kunne "gjømme" rom for folk og organisasjoner?
+
+---
+
+Prioritering mot fristen (litt før desember, rundt tre uker): Gruppe 1, 2 (unntatt e-post) og 5 er relativt avgrenset og har størst verdi for de som søker. Gruppe 3 og 4 er admin-komfort. Egen status på forespørsler krever en ny migrering (V9). E-post bør få en egen beslutning først.
+Setter brukergrensesnitt høyt.
+
+---
+
+Merknader
+- Hjelpeteksten under tidspunkt er din endring i PublicRequestPage.tsx, og den er ikke committet ennå.
+- Visning som bookinglisten er nå på plass: en kompakt liste der en rad åpner detaljene. Kommentaren din «ikke bookingliste lignende enda» stemmer derfor ikke lenger.
+- «Oppdaterer seg ikke når booking endres?» er løst. Forespørselen henter tid og rom fra bookingen, og endringer i forespørselen oppdaterer bookingen.
+- Engen, Samfunnet og UiB-kantina er bygget, men må settes opp i admin etter deploy. Det gjelder «Forvaltes av», en org-admin i Samfunnet og Kantinas åpningstider, som beskrevet i docs/DEPLOY_CHECKLIST.md.
+- «Gjemme rom» står som åpent spørsmål Q-40 i docs/OPEN_QUESTIONS.md.
