@@ -144,8 +144,15 @@ export function PublicRequestDetails({
         <RequestEditor
           request={r}
           onCancel={() => setMode('view')}
-          onSaved={() => {
-            app.notify(r.booking ? 'Forespørselen og bookingen er endret.' : 'Forespørselen er endret.')
+          onSaved={(bookingNotUpdated) => {
+            app.notify(
+              bookingNotUpdated
+                ? 'Forespørselen er endret. Bookingen ble ikke oppdatert, fordi den har startet.'
+                : r.booking
+                  ? 'Forespørselen og bookingen er endret.'
+                  : 'Forespørselen er endret.',
+              bookingNotUpdated ? 'info' : undefined,
+            )
             setMode('view')
             onChanged()
           }}
@@ -333,7 +340,16 @@ export function PublicRequestDetails({
  * rules (except that the time may have passed). With a booking, the time and room shown are the
  * booking's, and saving moves the booking and regenerates its text, or saves nothing.
  */
-function RequestEditor({ request: r, onCancel, onSaved }: { request: PublicRequest; onCancel: () => void; onSaved: () => void }) {
+function RequestEditor({
+  request: r,
+  onCancel,
+  onSaved,
+}: {
+  request: PublicRequest
+  onCancel: () => void
+  /** `bookingNotUpdated`: the booking has started, so only the request got the new text. */
+  onSaved: (bookingNotUpdated: boolean) => void
+}) {
   const app = useApp()
   const id = useId()
   const when = requestWhen(r)
@@ -371,7 +387,7 @@ function RequestEditor({ request: r, onCancel, onSaved }: { request: PublicReque
     if (problem) return
     setBusy(true)
     try {
-      await adminApi.updatePublicRequest(r.id, {
+      const saved = await adminApi.updatePublicRequest(r.id, {
         email: email.trim(),
         organizationName: organizationName.trim(),
         eventName: eventName.trim(),
@@ -387,7 +403,7 @@ function RequestEditor({ request: r, onCancel, onSaved }: { request: PublicReque
           phone: c.phone.trim(),
         })),
       })
-      onSaved()
+      onSaved(saved.bookingNotUpdated)
     } catch (err) {
       setError(errorMessage(err))
       setBusy(false)
@@ -399,7 +415,8 @@ function RequestEditor({ request: r, onCancel, onSaved }: { request: PublicReque
       {r.booking && (
         <Alert tone="info">
           Forespørselen har en booking. Tid og rom under er bookingens: endrer du dem, flyttes bookingen etter de vanlige reglene. Nytt
-          navn, ny beskrivelse eller nye kontaktpersoner oppdaterer bookingens tittel og beskrivelse.
+          navn, ny beskrivelse eller nye kontaktpersoner oppdaterer bookingens tittel og beskrivelse, så lenge bookingen ikke har
+          startet.
         </Alert>
       )}
       {submitted && (problem || error) && <Alert tone="error">{problem ?? error}</Alert>}

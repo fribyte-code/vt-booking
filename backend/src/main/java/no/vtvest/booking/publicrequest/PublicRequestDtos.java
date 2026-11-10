@@ -62,6 +62,12 @@ final class PublicRequestDtos {
             @NotBlank @Size(max = 2000) String description,
             @NotNull @Size(min = 1, max = MAX_CONTACTS) List<@NotNull @Valid Contact> contacts) {}
 
+    /**
+     * The answer to an edit: the request, and whether its booking was left as it was because it
+     * has started (only new text; a new time or room for a started booking is refused).
+     */
+    record EditedPublicRequest(PublicRequest request, boolean bookingNotUpdated) {}
+
     /** {@code cancelBooking}: with REJECTED, also cancel the request's booking. */
     record SetStatus(@NotNull Status status, Boolean cancelBooking) {}
 

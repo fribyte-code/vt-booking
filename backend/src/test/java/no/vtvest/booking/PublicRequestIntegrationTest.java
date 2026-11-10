@@ -394,20 +394,20 @@ class PublicRequestIntegrationTest extends IntegrationTest {
         // Any room that isn't archived, also one not offered in the form.
         call(put("/api/admin/public-requests/" + id), ADMIN, editJson(at(8, 18), at(8, 21), "\"" + ROOM_A + "\"", "[" + CONTACT + "," + second + "]"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.email").value("ny@example.test"))
-                .andExpect(jsonPath("$.eventName").value("Vinterkonsert"))
-                .andExpect(jsonPath("$.preferredRoomId").value(ROOM_A.toString()))
-                .andExpect(jsonPath("$.preferredRoomName").value("Møterom A"))
-                .andExpect(jsonPath("$.contacts.length()").value(2))
-                .andExpect(jsonPath("$.contacts[1].name").value("Ola"))
-                .andExpect(jsonPath("$.status").value("REJECTED"))
-                .andExpect(jsonPath("$.updatedByName").value("Silje Aas"));
+                .andExpect(jsonPath("$.request.email").value("ny@example.test"))
+                .andExpect(jsonPath("$.request.eventName").value("Vinterkonsert"))
+                .andExpect(jsonPath("$.request.preferredRoomId").value(ROOM_A.toString()))
+                .andExpect(jsonPath("$.request.preferredRoomName").value("Møterom A"))
+                .andExpect(jsonPath("$.request.contacts.length()").value(2))
+                .andExpect(jsonPath("$.request.contacts[1].name").value("Ola"))
+                .andExpect(jsonPath("$.request.status").value("REJECTED"))
+                .andExpect(jsonPath("$.request.updatedByName").value("Silje Aas"));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM public_request_contacts WHERE request_id = ?", Integer.class, id)).isEqualTo(2);
 
         // A time that has passed is fine for an edit (the request may be old); the time rules aren't.
         call(put("/api/admin/public-requests/" + id), ADMIN, editJson(at(-3, 18), at(-3, 20), "null", "[" + CONTACT + "]"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.preferredRoomId").doesNotExist());
+                .andExpect(jsonPath("$.request.preferredRoomId").doesNotExist());
         call(put("/api/admin/public-requests/" + id), ADMIN, editJson(oslo(8, 22, 0), oslo(9, 6, 0), "null", "[" + CONTACT + "]"))
                 .andExpect(status().isUnprocessableContent());
         call(put("/api/admin/public-requests/" + id), ADMIN, editJson(at(8, 18), at(8, 20), "null", "[]"))

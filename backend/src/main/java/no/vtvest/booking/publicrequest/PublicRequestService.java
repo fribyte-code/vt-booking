@@ -120,10 +120,11 @@ class PublicRequestService {
      * as the form apply, except that the time may have passed and any room that isn't archived can
      * be chosen; opening hours are left to the booking. A request with a booking updates the
      * booking in the same transaction ({@link #syncBooking}): if the booking refuses the change,
-     * nothing is saved.
+     * nothing is saved. A booking that has started keeps its text: the request is saved and
+     * {@code bookingNotUpdated} says so; a new time or room is still refused.
      */
     @Transactional
-    PublicRequest update(User actor, UUID id, EditPublicRequest body) {
+    EditedPublicRequest update(User actor, UUID id, EditPublicRequest body) {
         requireSystemAdmin(actor);
         lock(id);
         PublicRequest before = find(id);
@@ -160,10 +161,8 @@ class PublicRequestService {
                 id);
         jdbc.update("DELETE FROM public_request_contacts WHERE request_id = ?", id);
         insertContacts(id, contacts);
-        if (before.bookingId() != null) {
-            syncBooking(actor, before, find(id));
-        }
-        return find(id);
+        boolean bookingNotUpdated = before.bookingId() != null && !syncBooking(actor, before, find(id));
+        return new EditedPublicRequest(find(id), bookingNotUpdated);
     }
 
     /**
@@ -172,8 +171,11 @@ class PublicRequestService {
      * different from the booking's moves it; a new event name becomes its title, and a change to
      * what its description is made from regenerates the description. Otherwise the booking is left
      * as it is, so a title or description the admin changed in the calendar is kept.
+     *
+     * A booking that has started can't be changed: a new time or room is refused (the booking
+     * says so), but new text is left out of it, and this returns false so the admin is told.
      */
-    private void syncBooking(User actor, PublicRequest before, PublicRequest after) {
+    private boolean syncBooking(User actor, PublicRequest before, PublicRequest after) {
         BookingResponse booking = bookingService.get(actor, before.bookingId());
         boolean moved = !after.preferredRoomId().equals(booking.roomId())
                 || !after.start().equals(booking.start())
@@ -182,7 +184,10 @@ class PublicRequestService {
         String text = bookingDescription(after);
         String description = text.equals(bookingDescription(before)) ? booking.description() : text;
         if (!moved && title.equals(booking.title()) && Objects.equals(description, booking.description())) {
-            return;
+            return true;
+        }
+        if (!moved && !booking.start().isAfter(clock.instant())) {
+            return false;
         }
         bookingService.updateOnBehalf(actor, booking.id(), new UpdateBookingRequest(
                 booking.version(),
@@ -191,6 +196,7 @@ class PublicRequestService {
                 description,
                 after.start().atOffset(ZoneOffset.UTC),
                 after.end().atOffset(ZoneOffset.UTC)));
+        return true;
     }
 
     /** Bookings allow 500 characters (as {@code bookingDescription} in the frontend). */

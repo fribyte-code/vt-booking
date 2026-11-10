@@ -94,11 +94,11 @@ class PublicRequestBookingSyncIntegrationTest extends IntegrationTest {
         call(put("/api/admin/public-requests/" + ids[0]), ADMIN,
                 editJson("Vinterkonsert", ROOM_A, at(8, 18), at(8, 21), "Konsert i hagen", CONTACT))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("DONE"))
-                .andExpect(jsonPath("$.booking.roomId").value(ROOM_A.toString()))
-                .andExpect(jsonPath("$.booking.roomName").value("Møterom A"))
-                .andExpect(jsonPath("$.booking.title").value("Vinterkonsert"))
-                .andExpect(jsonPath("$.booking.start").value(at(8, 18).toString()));
+                .andExpect(jsonPath("$.request.status").value("DONE"))
+                .andExpect(jsonPath("$.request.booking.roomId").value(ROOM_A.toString()))
+                .andExpect(jsonPath("$.request.booking.roomName").value("Møterom A"))
+                .andExpect(jsonPath("$.request.booking.title").value("Vinterkonsert"))
+                .andExpect(jsonPath("$.request.booking.start").value(at(8, 18).toString()));
 
         assertThat(bookingStatus(ids[1])).isEqualTo("APPROVED");
         assertThat(jdbc.queryForObject("SELECT room_id FROM bookings WHERE id = ?", UUID.class, ids[1])).isEqualTo(ROOM_A);
@@ -120,7 +120,7 @@ class PublicRequestBookingSyncIntegrationTest extends IntegrationTest {
         call(put("/api/admin/public-requests/" + ids[0]), ADMIN,
                 editJson("Hagekonsert", ROOM_B, at(7, 18), at(7, 20), "Konsert i hagen", other))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.booking.title").value("Konsert (egen tittel)"));
+                .andExpect(jsonPath("$.request.booking.title").value("Konsert (egen tittel)"));
         assertThat(jdbc.queryForObject("SELECT description FROM bookings WHERE id = ?", String.class, ids[1]))
                 .startsWith("Konsert i hagen\n\n")
                 .contains("- Ola Nordmann (Ekstern forening), kortnr. 12345678, tlf. +4791234567");
@@ -147,7 +147,33 @@ class PublicRequestBookingSyncIntegrationTest extends IntegrationTest {
         call(put("/api/admin/public-requests/" + ids[0]), ADMIN,
                 editJson("Hagekonsert", ROOM_B, oslo(10, 7, 0), oslo(11, 5, 0), "Konsert i hagen", CONTACT))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.booking.end").value(oslo(11, 5, 0).toString()));
+                .andExpect(jsonPath("$.request.booking.end").value(oslo(11, 5, 0).toString()));
+    }
+
+    @Test
+    void aStartedBookingKeepsItsTextButTheRequestIsSavedAndTimeOrRoomIsRefused() throws Exception {
+        UUID[] ids = requestWithBooking();
+        jdbc.update("UPDATE bookings SET start_at = ?, end_at = ? WHERE id = ?",
+                Timestamp.from(at(-1, 18)), Timestamp.from(at(-1, 20)), ids[1]);
+        String other = CONTACT.replace("Kari Nordmann", "Ola Nordmann");
+
+        // New name and contact: saved on the request, the booking is left alone and the admin told.
+        call(put("/api/admin/public-requests/" + ids[0]), ADMIN, editJson("Nytt navn", ROOM_B, at(-1, 18), at(-1, 20), "Konsert i hagen", other))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bookingNotUpdated").value(true))
+                .andExpect(jsonPath("$.request.eventName").value("Nytt navn"))
+                .andExpect(jsonPath("$.request.contacts[0].name").value("Ola Nordmann"))
+                .andExpect(jsonPath("$.request.booking.title").value("Hagekonsert"));
+
+        // A new time is refused as before, and nothing is saved.
+        call(put("/api/admin/public-requests/" + ids[0]), ADMIN, editJson("Tredje navn", ROOM_B, at(-1, 19), at(-1, 21), "Konsert i hagen", other))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+        assertThat(jdbc.queryForObject("SELECT event_name FROM public_requests WHERE id = ?", String.class, ids[0])).isEqualTo("Nytt navn");
+
+        // Nothing for the booking: nothing to tell.
+        call(put("/api/admin/public-requests/" + ids[0]), ADMIN, editJson("Nytt navn", ROOM_B, at(-1, 18), at(-1, 20), "Konsert i hagen", other))
+                .andExpect(jsonPath("$.bookingNotUpdated").value(false));
     }
 
     @Test

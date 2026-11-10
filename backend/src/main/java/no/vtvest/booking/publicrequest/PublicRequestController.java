@@ -61,7 +61,7 @@ class PublicRequestController {
 
     /** Corrects the request, at any status. A linked booking is updated with it, or nothing is saved. */
     @PutMapping("/api/admin/public-requests/{id}")
-    PublicRequest update(@PathVariable UUID id, @Valid @RequestBody EditPublicRequest body) {
+    EditedPublicRequest update(@PathVariable UUID id, @Valid @RequestBody EditPublicRequest body) {
         return requests.update(currentUser.require(), id, body);
     }
 

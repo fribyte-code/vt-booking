@@ -191,9 +191,12 @@ export const adminApi = {
 
   publicRequests: () => api.get<PublicRequest[]>('/api/admin/public-requests'),
   rejectPublicRequest: (requestId: string) => api.post<PublicRequest>(`/api/admin/public-requests/${id(requestId)}/reject`),
-  /** At any status. A linked booking is moved and its text regenerated in the same call, or nothing is saved. */
+  /**
+   * At any status. A linked booking is moved and its text regenerated in the same call, or nothing
+   * is saved. A booking that has started keeps its text (`bookingNotUpdated`); a new time or room for it is refused.
+   */
   updatePublicRequest: (requestId: string, body: PublicRequestFields) =>
-    api.put<PublicRequest>(`/api/admin/public-requests/${id(requestId)}`, body),
+    api.put<{ request: PublicRequest; bookingNotUpdated: boolean }>(`/api/admin/public-requests/${id(requestId)}`, body),
   /** `cancelBooking` with REJECTED also cancels the request's booking. */
   setPublicRequestStatus: (requestId: string, status: PublicRequestStatus, cancelBooking = false) =>
     api.put<PublicRequest>(`/api/admin/public-requests/${id(requestId)}/status`, { status, cancelBooking }),
