@@ -55,18 +55,19 @@ export function EmailDialog({ title, draft, onClose }: { title: string; draft: E
       size="lg"
       onClose={onClose}
       footer={
-        <>
+        // Stacked at full width on a phone, the main button on top; side by side from sm.
+        <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center">
           <a
             href={mailtoOf(draft)}
-            className="mr-auto inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-medium text-slate-700 ring-1 ring-slate-300 ring-inset hover:bg-slate-50"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium text-slate-700 ring-1 ring-slate-300 ring-inset hover:bg-slate-50 sm:mr-auto"
           >
             <Mail className="size-4" /> Åpne i e-postprogram
           </a>
-          <Button variant="primary" onClick={() => copyMail(emailText(draft))} aria-live="polite">
+          <Button variant="primary" className="justify-center" onClick={() => copyMail(emailText(draft))} aria-live="polite">
             {mail === 'copied' ? <Check className="size-4" /> : <Copy className="size-4" />}
             {mail === 'copied' ? 'Kopiert!' : 'Kopier e-post'}
           </Button>
-        </>
+        </div>
       }
     >
       <div className="space-y-3">
