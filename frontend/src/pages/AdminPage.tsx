@@ -65,7 +65,14 @@ export function AdminPage() {
 
         <div className="mt-5">
           {(tab === 'pending' || tab === 'processed') && (
-            <RequestQueue view={tab} filter={filter} onFilterChange={setFilter} showManager />
+            <div className="space-y-5">
+              <p className="text-sm text-slate-500">
+                {tab === 'pending'
+                  ? 'Søknader fra villaorganisasjonene, som booker selv i systemet og må få godkjent rom de bare kan søke om. Eksterne sender forespørsler (egen fane).'
+                  : 'Søknader fra villaorganisasjonene som er godkjent eller avslått. Eksterne sender forespørsler (egen fane).'}
+              </p>
+              <RequestQueue view={tab} filter={filter} onFilterChange={setFilter} showManager />
+            </div>
           )}
           <Suspense fallback={<p className="text-sm text-slate-500">Laster …</p>}>
             {tab === 'public' && <PublicRequestsAdmin />}

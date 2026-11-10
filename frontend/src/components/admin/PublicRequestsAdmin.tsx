@@ -49,11 +49,11 @@ export function PublicRequestsAdmin() {
   return (
     <div className="space-y-5">
       <p className="text-sm text-slate-500">
-        Forespørsler om fellesarealene i Studentvillaen sendt fra det offentlige skjemaet på{' '}
+        Forespørsler fra eksterne, som ikke har konto, om fellesarealene i Studentvillaen, sendt fra det offentlige skjemaet på{' '}
         <a href="/soknad" target="_blank" rel="noreferrer" className="font-medium text-blue-700 hover:underline">
           /soknad
         </a>
-        . Søkeren får ikke beskjed automatisk; svar på e-post.
+        . Villaorganisasjonenes søknader ligger under Ventende søknader. Søkeren får ikke beskjed automatisk; svar på e-post.
       </p>
 
       <RequestFilterBar requests={requests} filter={filter} onChange={setFilter} shown={shown.length} />
