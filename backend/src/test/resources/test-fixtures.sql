@@ -3,7 +3,7 @@
 -- Never used outside the tests: the application has no seed data.
 -- Every user's password is IntegrationTest.PASSWORD ("fixture-passord-2026").
 
-TRUNCATE public_request_contacts, room_opening_hours, public_requests, membership_invitations, bookings, room_access, memberships, rooms, organizations, users;
+TRUNCATE guard_orders, public_request_contacts, room_opening_hours, public_requests, membership_invitations, bookings, room_access, memberships, rooms, organizations, users;
 
 INSERT INTO organizations (id, name) VALUES
     ('10000000-0000-0000-0000-00000000000a', 'Organisasjon A'),
