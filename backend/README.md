@@ -85,7 +85,7 @@ The CSRF token rotates on login, so call `/api/auth/csrf` again and read a fresh
 | GET | `/api/bookings/{id}` | One booking. Returns 404 if you may not see it. |
 | GET | `/api/bookings/{id}/calendar.ics` | An approved booking as an iCalendar file (`text/calendar`, inline), for "Legg til i kalender" (Apple Calendar has no add-event link). 404 if you may not see it, 409 if not approved. |
 | POST | `/api/bookings` | `{ roomId, organizationId, title, description?, start, end }`. Returns 201 with `APPROVED` (DIRECT) or `PENDING` (REQUEST). |
-| POST | `/api/bookings/{id}/approve` | System admins, and the room's managers (403 for other rooms). `{ version, comment? }`. Records who decided (`decidedByName`). |
+| POST | `/api/bookings/{id}/approve` | System admins, and the room's managers. For other rooms: 404 if you can't see the request (as `GET /api/bookings/{id}`), 403 if you can (e.g. your own organization's); 403 before any lookup if you manage no room. `{ version, comment? }`. Records who decided (`decidedByName`). |
 | POST | `/api/bookings/{id}/reject` | As approve. `{ version, reason }` |
 | POST | `/api/bookings/{id}/cancel` | Requester (while still a member), the organization's admins (while it is active), or a global admin. `{ version, reason? }`. Only future `APPROVED`/`PENDING` bookings. |
 | PUT | `/api/bookings/{id}` | Edit. Same people as cancel. `{ version, roomId, title, description?, start, end }`; the organization can't change. A new room or time is checked like a new booking, and the room permission decides the status (see below). |

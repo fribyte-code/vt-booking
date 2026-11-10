@@ -88,10 +88,11 @@ class RoomManagerIntegrationTest extends IntegrationTest {
         assertThat(jdbc.queryForObject("SELECT decided_by_id FROM bookings WHERE id = ?", String.class, inStorsalen))
                 .isEqualTo(INGRID);
 
+        // Another room's request she can't see is not found, as when looking it up.
         approve(INGRID, inRoomB)
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
-        reject(INGRID, inRoomB).andExpect(status().isForbidden());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+        reject(INGRID, inRoomB).andExpect(status().isNotFound());
         assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id = ?", String.class, inRoomB)).isEqualTo("PENDING");
 
         // Rejecting in their own room works too, and is recorded.
@@ -102,8 +103,9 @@ class RoomManagerIntegrationTest extends IntegrationTest {
 
     @Test
     void ordinaryMembersCannotDecide() throws Exception {
-        // Jonas is only a MEMBER of C, and Kari only a MEMBER of A.
-        approve(JONAS, inStorsalen).andExpect(status().isForbidden());
+        // Jonas is only a MEMBER of C (he manages Møterom B, so Storsalen's request is just not found
+        // for him), and Kari only a MEMBER of A (no rooms: refused before any lookup).
+        approve(JONAS, inStorsalen).andExpect(status().isNotFound());
         approve(KARI, inRoomB).andExpect(status().isForbidden());
         reject(KARI, inRoomB).andExpect(status().isForbidden());
         call(get("/api/bookings/requests"), KARI, null).andExpect(status().isForbidden());
@@ -151,9 +153,12 @@ class RoomManagerIntegrationTest extends IntegrationTest {
         approve(INGRID, inStorsalen).andExpect(status().isForbidden());
         approve(JONAS, inStorsalen).andExpect(status().isOk());
 
-        // Back to VT: system admins only.
+        // Back to VT: system admins only. Jonas still sees the request (his organization's), so it is
+        // forbidden rather than not found.
         setManager(ROOM_B, null);
-        approve(JONAS, inRoomB).andExpect(status().isForbidden());
+        approve(JONAS, inRoomB)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
         assertThat(managedRoomIds(JONAS)).containsExactly(STORSALEN.toString());
     }
 
@@ -190,7 +195,7 @@ class RoomManagerIntegrationTest extends IntegrationTest {
                 .andReturn().getResponse().getContentAsString();
         String seriesId = JsonPath.read(body, "$.seriesId");
 
-        call(post("/api/bookings/series/" + seriesId + "/approve"), JONAS, "{}").andExpect(status().isForbidden());
+        call(post("/api/bookings/series/" + seriesId + "/approve"), JONAS, "{}").andExpect(status().isNotFound());
         call(post("/api/bookings/series/" + seriesId + "/reject"), KARI, "{\"reason\":\"Nei\"}").andExpect(status().isForbidden());
         call(post("/api/bookings/series/" + seriesId + "/approve"), INGRID, "{}")
                 .andExpect(status().isOk())

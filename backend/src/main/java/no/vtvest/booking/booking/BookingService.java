@@ -546,11 +546,19 @@ public class BookingService {
         }
     }
 
-    /** Approving and rejecting a request in a room: system admins, and the managers of that room. */
+    /**
+     * Approving and rejecting a request in a room: system admins, and the managers of that room.
+     * A request the actor can't see is not found, as when looking it up, so its existence isn't
+     * revealed; one they can see (e.g. their own organization's) but not decide is forbidden.
+     */
     static void requireMayDecide(Viewer viewer, Booking booking) {
-        if (!viewer.mayDecide(booking.getRoomId())) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "Du kan bare behandle søknader for rom du er romansvarlig for.");
+        if (viewer.mayDecide(booking.getRoomId())) {
+            return;
         }
+        if (!viewer.sees(booking)) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "Bookingen finnes ikke.");
+        }
+        throw new ApiException(ErrorCode.FORBIDDEN, "Du kan bare behandle søknader for rom du er romansvarlig for.");
     }
 
     static void requireAdmin(User actor) {
