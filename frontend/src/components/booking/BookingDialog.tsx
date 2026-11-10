@@ -400,7 +400,7 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
             onChange={(e) => setTitle(e.target.value)}
             placeholder="F.eks. Styremøte"
             aria-invalid={titleMissing}
-            className={cn(titleMissing && 'ring-red-400')}
+            className={cn(titleMissing && 'ring-red-400!')}
             maxLength={80}
           />
           {titleMissing && <p className="text-xs text-red-600">Gi bookingen en tittel.</p>}

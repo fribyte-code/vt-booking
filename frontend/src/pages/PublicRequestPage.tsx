@@ -67,7 +67,7 @@ function YesNo({ legend, hint, value, onChange, invalid }: {
             className={cn(
               'flex h-10 flex-1 cursor-pointer items-center justify-center rounded-lg text-sm font-medium ring-1 ring-inset focus-within:ring-2 focus-within:ring-blue-600 sm:flex-none sm:px-6',
               value === option ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50',
-              invalid && value === null && 'ring-red-400',
+              invalid && value === null && 'ring-red-400!',
             )}
           >
             <input type="radio" name={name} className="sr-only" checked={value === option} onChange={() => onChange(option)} />
@@ -250,7 +250,7 @@ export function PublicRequestPage() {
                 value={email}
                 maxLength={254}
                 aria-invalid={missing(email)}
-                className={cn(missing(email) && 'ring-red-400')}
+                className={cn(missing(email) && 'ring-red-400!')}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </Field>
@@ -261,7 +261,7 @@ export function PublicRequestPage() {
                 value={organizationName}
                 maxLength={120}
                 aria-invalid={missing(organizationName)}
-                className={cn(missing(organizationName) && 'ring-red-400')}
+                className={cn(missing(organizationName) && 'ring-red-400!')}
                 onChange={(e) => setOrganizationName(e.target.value)}
               />
             </Field>
@@ -271,7 +271,7 @@ export function PublicRequestPage() {
                 value={eventName}
                 maxLength={80}
                 aria-invalid={missing(eventName)}
-                className={cn(missing(eventName) && 'ring-red-400')}
+                className={cn(missing(eventName) && 'ring-red-400!')}
                 onChange={(e) => setEventName(e.target.value)}
               />
             </Field>
@@ -299,7 +299,7 @@ export function PublicRequestPage() {
                       className={cn(
                         'flex cursor-pointer items-start gap-3 rounded-xl px-3 py-2.5 ring-1 ring-inset focus-within:ring-2 focus-within:ring-blue-600',
                         roomId === o.id ? 'bg-slate-50 ring-2 ring-slate-900' : 'ring-slate-200 hover:bg-slate-50',
-                        submitted && roomId === null && 'ring-red-400',
+                        submitted && roomId === null && 'ring-red-400!',
                       )}
                     >
                       <input
@@ -330,7 +330,7 @@ export function PublicRequestPage() {
                       min={toDateInput(new Date())}
                       value={date}
                       aria-invalid={missing(date)}
-                      className={cn(missing(date) && 'ring-red-400')}
+                      className={cn(missing(date) && 'ring-red-400!')}
                       onChange={(e) => setDate(e.target.value)}
                     />
                   </Field>
@@ -342,7 +342,7 @@ export function PublicRequestPage() {
                     step={900}
                     value={startTime}
                     aria-invalid={missing(startTime)}
-                    className={cn(missing(startTime) && 'ring-red-400')}
+                    className={cn(missing(startTime) && 'ring-red-400!')}
                     onChange={(e) => setStartTime(e.target.value)}
                   />
                 </Field>
@@ -353,7 +353,7 @@ export function PublicRequestPage() {
                     step={900}
                     value={endTime}
                     aria-invalid={missing(endTime)}
-                    className={cn(missing(endTime) && 'ring-red-400')}
+                    className={cn(missing(endTime) && 'ring-red-400!')}
                     onChange={(e) => setEndTime(e.target.value)}
                   />
                 </Field>
@@ -385,7 +385,7 @@ export function PublicRequestPage() {
                 value={description}
                 maxLength={2000}
                 aria-invalid={missing(description)}
-                className={cn(missing(description) && 'ring-red-400')}
+                className={cn(missing(description) && 'ring-red-400!')}
                 onChange={(e) => setDescription(e.target.value)}
               />
             </Field>
@@ -463,7 +463,7 @@ function ContactFields({
             maxLength={100}
             value={contact.name}
             aria-invalid={invalid('name')}
-            className={cn(invalid('name') && 'ring-red-400')}
+            className={cn(invalid('name') && 'ring-red-400!')}
             onChange={(e) => onChange({ name: e.target.value })}
           />
         </Field>
@@ -473,7 +473,7 @@ function ContactFields({
             maxLength={120}
             value={contact.organization}
             aria-invalid={invalid('organization')}
-            className={cn(invalid('organization') && 'ring-red-400')}
+            className={cn(invalid('organization') && 'ring-red-400!')}
             onChange={(e) => onChange({ organization: e.target.value })}
           />
         </Field>
@@ -484,7 +484,7 @@ function ContactFields({
             maxLength={30}
             value={contact.cardNumber}
             aria-invalid={invalid('cardNumber')}
-            className={cn(invalid('cardNumber') && 'ring-red-400')}
+            className={cn(invalid('cardNumber') && 'ring-red-400!')}
             onChange={(e) => onChange({ cardNumber: e.target.value })}
           />
         </Field>
@@ -496,7 +496,7 @@ function ContactFields({
             maxLength={30}
             value={contact.phone}
             aria-invalid={invalid('phone')}
-            className={cn(invalid('phone') && 'ring-red-400')}
+            className={cn(invalid('phone') && 'ring-red-400!')}
             onChange={(e) => onChange({ phone: e.target.value })}
           />
         </Field>

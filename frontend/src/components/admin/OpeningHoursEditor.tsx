@@ -61,7 +61,7 @@ export function OpeningHoursEditor({ value, onChange }: { value: OpeningHoursEnt
                     <Input
                       aria-label={`${dayNames[day]} åpner`}
                       id={`${id}-${day}-opens`}
-                      className={cn('h-8! w-20!', !OPENING_TIME.test(h.opens) && 'ring-red-400')}
+                      className={cn('h-8! w-20!', !OPENING_TIME.test(h.opens) && 'ring-red-400!')}
                       inputMode="numeric"
                       placeholder="08:00"
                       maxLength={5}
@@ -71,7 +71,7 @@ export function OpeningHoursEditor({ value, onChange }: { value: OpeningHoursEnt
                     <span className="text-sm text-slate-500">–</span>
                     <Input
                       aria-label={`${dayNames[day]} stenger`}
-                      className={cn('h-8! w-20!', !OPENING_TIME.test(h.closes) && 'ring-red-400')}
+                      className={cn('h-8! w-20!', !OPENING_TIME.test(h.closes) && 'ring-red-400!')}
                       inputMode="numeric"
                       placeholder="24:00"
                       maxLength={5}
