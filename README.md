@@ -16,6 +16,7 @@ Rombookingsystem for Velferdstinget Vest. Organisasjonene booker møterom og lok
 
 - **Søknader og godkjenning.** Ledigheten sjekkes på nytt når en søknad godkjennes. Søkeren ser avgjørelsen og en eventuell kommentar.
 - **Offentlig forespørselsskjema** på `/soknad` for å låne fellesarealene i Studentvillaen uten konto. Skjemaet tilbyr rommene administrator har merket «Kan forespørres» (eller ingen preferanse), ber om én eller flere ansvarlige personer (navn, organisasjon, kortnummer og telefon) og informerer om at alle arrangementer må ha villavakt. Systemadministrator ser forespørslene under Administrasjon → Forespørsler, avslår dem eller oppretter en booking, vanligvis for den felles organisasjonen «Eksterne». Søkeren får svar på e-post; systemet sender ingen e-post selv.
+- **Natt-oversikt** under Administrasjon → Natt: alle kommende arrangementer over midnatt i alle rom (bookinger, søknader og forespørsler), med avhuking for «Vektere bestilt» og en ferdig bestilling til vekterne.
 - **Gjentakende bookinger** hver 1–4 uke, som kan endres én og én eller «denne og følgende».
 - **Bookingregler:** ingen dobbeltbooking, maks 22 timer per booking (07:00–05:00), maks 180 dager frem i tid, og ingen rom kan brukes mellom kl. 05:00 og 07:00. Rom kan i tillegg ha faste åpningstider per ukedag.
 - **Roller:** systemadministrator (brukere, organisasjoner, rom, tilganger og godkjenning) og organisasjonsadministrator (medlemmene i egen organisasjon). Et rom kan forvaltes av en organisasjon («Forvaltes av»); da godkjenner og avslår organisasjonsadministratorene der søknadene for rommet under «Til godkjenning», i tillegg til systemadministrator.
@@ -71,6 +72,7 @@ Fullstendig veiledning, med reverse proxy, backup, gjenoppretting og konfigurasj
 |---|---|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Hvordan systemet er bygd opp |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Drift i produksjon |
+| [`docs/DEPLOY_CHECKLIST.md`](docs/DEPLOY_CHECKLIST.md) | Sjekkliste og testplan for utrullingen i november 2026 (V9–V12) |
 | [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) | Hva som er avklart med Velferdstinget, og hva som er åpent |
 | [`docs/README.md`](docs/README.md) | Opprinnelig kravspesifikasjon og notater |
 | [`backend/README.md`](backend/README.md) | Oppsett av backend og API-referanse |
