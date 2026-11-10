@@ -22,7 +22,7 @@ class PublicRequestIntegrationTest extends IntegrationTest {
     private static final UUID ORG_C = UUID.fromString("10000000-0000-0000-0000-00000000000c");
 
     private static final String CONTACT =
-            "{\"name\":\" Kari Nordmann \",\"organization\":\"Ekstern forening\",\"cardNumber\":\"1234 5678\",\"phone\":\"+47 912 34 567\"}";
+            "{\"name\":\" Kari Nordmann \",\"organization\":\"Ekstern forening\",\"cardNumber\":\"123 456\",\"phone\":\"+47 912 34 567\"}";
 
     /** Storsalen is offered in the form (see setUp). */
     private static String requestJson(Instant start, Instant end) {
@@ -73,7 +73,7 @@ class PublicRequestIntegrationTest extends IntegrationTest {
                 .containsEntry("position", 0)
                 .containsEntry("name", "Kari Nordmann")
                 .containsEntry("organization", "Ekstern forening")
-                .containsEntry("card_number", "12345678")
+                .containsEntry("card_number", "123456")
                 .containsEntry("phone", "+4791234567");
 
         mvc.perform(post("/api/public/requests").contentType(MediaType.APPLICATION_JSON).content(requestJson(at(7, 18), at(7, 20))))
@@ -103,8 +103,14 @@ class PublicRequestIntegrationTest extends IntegrationTest {
         submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[]")).andExpect(status().isBadRequest());
         submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[" + String.join(",", java.util.Collections.nCopies(11, CONTACT)) + "]"))
                 .andExpect(status().isBadRequest());
-        submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[" + CONTACT.replace("1234 5678", "s123456") + "]"))
+        submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[" + CONTACT.replace("123 456", "s123456") + "]"))
                 .andExpect(status().isBadRequest());
+        // Exactly 6 digits, the UiB card's.
+        submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[" + CONTACT.replace("123 456", "12345") + "]"))
+                .andExpect(status().isBadRequest());
+        submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[" + CONTACT.replace("123 456", "1234567") + "]"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Kortnummeret skal være de 6 sifrene på UiB-kortet, ikke studentnummeret."));
         submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[" + CONTACT.replace("+47 912 34 567", "112") + "]"))
                 .andExpect(status().isBadRequest());
         submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[" + CONTACT.replace(" Kari Nordmann ", " ") + "]"))
@@ -163,7 +169,7 @@ class PublicRequestIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$[0].eventName").value("Hagekonsert"))
                 .andExpect(jsonPath("$[0].preferredRoomId").value(STORSALEN.toString()))
                 .andExpect(jsonPath("$[0].preferredRoomName").value("Storsalen"))
-                .andExpect(jsonPath("$[0].contacts[0].cardNumber").value("12345678"))
+                .andExpect(jsonPath("$[0].contacts[0].cardNumber").value("123456"))
                 .andExpect(jsonPath("$[0].status").value("NEW"));
     }
 
@@ -184,7 +190,7 @@ class PublicRequestIntegrationTest extends IntegrationTest {
 
     @Test
     void noPreferenceAndSeveralContactsAreFine() throws Exception {
-        String second = CONTACT.replace(" Kari Nordmann ", "Ola Nordmann").replace("1234 5678", "87654321");
+        String second = CONTACT.replace(" Kari Nordmann ", "Ola Nordmann").replace("123 456", "654321");
         submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[" + CONTACT + "," + second + "]"))
                 .andExpect(status().isNoContent());
         call(get("/api/admin/public-requests"), ADMIN, null)
@@ -389,7 +395,7 @@ class PublicRequestIntegrationTest extends IntegrationTest {
     void adminsEditARequestAtAnyStatus() throws Exception {
         UUID id = submit(at(7, 18), at(7, 20));
         call(post("/api/admin/public-requests/" + id + "/reject"), ADMIN, null).andExpect(status().isOk());
-        String second = CONTACT.replace(" Kari Nordmann ", "Ola").replace("1234 5678", "87654321");
+        String second = CONTACT.replace(" Kari Nordmann ", "Ola").replace("123 456", "654321");
 
         // Any room that isn't archived, also one not offered in the form.
         call(put("/api/admin/public-requests/" + id), ADMIN, editJson(at(8, 18), at(8, 21), "\"" + ROOM_A + "\"", "[" + CONTACT + "," + second + "]"))
@@ -412,7 +418,7 @@ class PublicRequestIntegrationTest extends IntegrationTest {
                 .andExpect(status().isUnprocessableContent());
         call(put("/api/admin/public-requests/" + id), ADMIN, editJson(at(8, 18), at(8, 20), "null", "[]"))
                 .andExpect(status().isBadRequest());
-        call(put("/api/admin/public-requests/" + id), ADMIN, editJson(at(8, 18), at(8, 20), "null", "[" + CONTACT.replace("1234 5678", "s1") + "]"))
+        call(put("/api/admin/public-requests/" + id), ADMIN, editJson(at(8, 18), at(8, 20), "null", "[" + CONTACT.replace("123 456", "s1") + "]"))
                 .andExpect(status().isBadRequest());
         jdbc.update("UPDATE rooms SET status = 'ARCHIVED' WHERE id = ?", ROOM_B);
         call(put("/api/admin/public-requests/" + id), ADMIN, editJson(at(8, 18), at(8, 20), "\"" + ROOM_B + "\"", "[" + CONTACT + "]"))

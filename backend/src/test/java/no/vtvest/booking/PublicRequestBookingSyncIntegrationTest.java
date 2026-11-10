@@ -26,7 +26,7 @@ class PublicRequestBookingSyncIntegrationTest extends IntegrationTest {
     private static final UUID ORG_C = UUID.fromString("10000000-0000-0000-0000-00000000000c");
 
     private static final String CONTACT =
-            "{\"name\":\"Kari Nordmann\",\"organization\":\"Ekstern forening\",\"cardNumber\":\"12345678\",\"phone\":\"+4791234567\"}";
+            "{\"name\":\"Kari Nordmann\",\"organization\":\"Ekstern forening\",\"cardNumber\":\"123456\",\"phone\":\"+4791234567\"}";
 
     @BeforeEach
     void offerStorsalen() {
@@ -123,7 +123,7 @@ class PublicRequestBookingSyncIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.request.booking.title").value("Konsert (egen tittel)"));
         assertThat(jdbc.queryForObject("SELECT description FROM bookings WHERE id = ?", String.class, ids[1]))
                 .startsWith("Konsert i hagen\n\n")
-                .contains("- Ola Nordmann (Ekstern forening), kortnr. 12345678, tlf. +4791234567");
+                .contains("- Ola Nordmann (Ekstern forening), kortnr. 123456, tlf. +4791234567");
         assertThat(bookingStart(ids[1])).isEqualTo(at(7, 18));
 
         // Nothing the booking is made from changes: the

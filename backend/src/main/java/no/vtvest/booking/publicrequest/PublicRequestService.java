@@ -41,7 +41,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 class PublicRequestService {
 
-    private static final Pattern CARD_NUMBER = Pattern.compile("^[0-9]{4,20}$");
+    /** The number on the UiB card: exactly 6 digits (never the student number). Mirrored in publicRequests.ts. */
+    static final int CARD_NUMBER_DIGITS = 6;
+    private static final Pattern CARD_NUMBER = Pattern.compile("^[0-9]{" + CARD_NUMBER_DIGITS + "}$");
     private static final Pattern PHONE = Pattern.compile("^\\+?[0-9]{8,15}$");
     /** As far ahead as a booking can be made (BookingService.MAX_ADVANCE). */
     static final Duration MAX_ADVANCE = Duration.ofDays(180);
@@ -286,7 +288,7 @@ class PublicRequestService {
         String card = c.cardNumber().replaceAll("[\\s-]", "");
         String phone = c.phone().replaceAll("[\\s-]", "");
         if (!CARD_NUMBER.matcher(card).matches()) {
-            throw new ApiException(ErrorCode.VALIDATION, "Kortnummeret skal bare ha sifre (4–20). Bruk kortnummeret, ikke studentnummeret.");
+            throw new ApiException(ErrorCode.VALIDATION, "Kortnummeret skal være de " + CARD_NUMBER_DIGITS + " sifrene på UiB-kortet, ikke studentnummeret.");
         }
         if (!PHONE.matcher(phone).matches()) {
             throw new ApiException(ErrorCode.VALIDATION, "Telefonnummeret må ha 8–15 sifre, eventuelt med + foran.");

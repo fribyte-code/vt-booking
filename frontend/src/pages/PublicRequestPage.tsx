@@ -45,7 +45,7 @@ const TEXT = {
     'Velg dato, starttidspunkt og sluttidspunkt. Lokalene er stengt mellom kl 05:00 og 07:00',
   description: 'Beskriv arrangementet: hva som skal skje, omtrent hvor mange som kommer, og om det blir servering.',
   contacts:
-    'Hvem er ansvarlige under arrangementet? Oppgi minst én person. Bruk kortnummeret på UiB-kortet, ikke studentnummeret.',
+    'Hvem er ansvarlige under arrangementet? Oppgi minst én person. Kortnummeret er de 6 sifrene på UiB-kortet, ikke studentnummeret.',
   villaGuard: 'Alle arrangementer må ha villavakt.',
   villaGuardNight: 'Da er villavakt ekstra viktig, og det trengs i tillegg vektere.',
   confirmation:

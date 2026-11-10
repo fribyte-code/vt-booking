@@ -2,7 +2,7 @@ import { Trash2 } from 'lucide-react'
 import { useId } from 'react'
 import { cn } from '../../lib/cn'
 import type { PublicRequestContact } from '../../services/adminApi'
-import { contactFieldProblems } from '../../services/publicRequests'
+import { CARD_NUMBER_DIGITS, contactFieldProblems } from '../../services/publicRequests'
 import { Button } from '../ui/Button'
 import { Field, Input } from '../ui/fields'
 
@@ -56,7 +56,7 @@ export function ContactFields({
             onChange={(e) => onChange({ organization: e.target.value })}
           />
         </Field>
-        <Field label="Kortnummer" htmlFor={`${id}-card`} hint="Nummeret på UiB-kortet, ikke studentnummeret.">
+        <Field label="Kortnummer" htmlFor={`${id}-card`} hint={`${CARD_NUMBER_DIGITS} sifre på UiB-kortet, ikke studentnummeret`}>
           <Input
             id={`${id}-card`}
             inputMode="numeric"

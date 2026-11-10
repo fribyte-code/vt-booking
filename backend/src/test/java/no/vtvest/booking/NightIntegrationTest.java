@@ -28,7 +28,7 @@ class NightIntegrationTest extends IntegrationTest {
         mvc.perform(post("/api/public/requests").with(withCsrf()).contentType(MediaType.APPLICATION_JSON).content("""
                         {"email":"leder@example.test","organizationName":"Ekstern forening","eventName":"%s","memberOfKulturstyretOrSamfunnet":true,
                          "preferredRoomId":"%s","start":"%s","end":"%s","description":"Fest",
-                         "contacts":[{"name":"Kari Nordmann","organization":"Ekstern forening","cardNumber":"12345678","phone":"+4791234567"}]}
+                         "contacts":[{"name":"Kari Nordmann","organization":"Ekstern forening","cardNumber":"123456","phone":"+4791234567"}]}
                         """.formatted(eventName, STORSALEN, start, end)))
                 .andExpect(status().isNoContent());
         return jdbc.queryForObject("SELECT id FROM public_requests WHERE event_name = ?", UUID.class, eventName);

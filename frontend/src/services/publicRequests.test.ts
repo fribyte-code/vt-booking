@@ -29,7 +29,7 @@ describe('requestedRoom', () => {
 })
 
 describe('contactProblem', () => {
-  const contact = { name: 'Kari', organization: 'Jazzklubben', cardNumber: '1234 5678', phone: '+47 912 34 567' }
+  const contact = { name: 'Kari', organization: 'Jazzklubben', cardNumber: '123 456', phone: '+47 912 34 567' }
 
   it('accepts a complete contact, ignoring spaces and hyphens', () => {
     expect(contactProblem(contact)).toBeNull()
@@ -39,6 +39,8 @@ describe('contactProblem', () => {
   it('refuses missing fields, a student number and a short phone number', () => {
     expect(contactProblem({ ...contact, name: ' ' })).toMatch(/Fyll ut/)
     expect(contactProblem({ ...contact, cardNumber: 's123456' })).toMatch(/ikke studentnummeret/)
+    expect(contactProblem({ ...contact, cardNumber: '12345' })).toBe('Kortnummeret skal være de 6 sifrene på UiB-kortet, ikke studentnummeret.')
+    expect(contactProblem({ ...contact, cardNumber: '1234567' })).toMatch(/6 sifrene/)
     expect(contactProblem({ ...contact, phone: '112' })).toMatch(/Telefonnummeret/)
   })
 })
@@ -76,7 +78,7 @@ describe('replyMailto', () => {
     start: '2030-03-01T19:00:00Z',
     end: '2030-03-02T01:00:00Z',
     description: 'Konsert',
-    contacts: [{ name: 'Kari', organization: 'Jazzklubben', cardNumber: '12345678', phone: '91234567' }],
+    contacts: [{ name: 'Kari', organization: 'Jazzklubben', cardNumber: '123456', phone: '91234567' }],
     status: 'NEW',
     createdAt: '2030-02-01T10:00:00Z',
     bookingId: null,
@@ -143,20 +145,20 @@ describe('bookingDescription', () => {
     memberOfKulturstyretOrSamfunnet: true,
     preferredRoomName: null,
     description: 'x'.repeat(600),
-    contacts: Array.from({ length: 3 }, (_, i) => ({ name: `Person ${i}`, organization: 'Org', cardNumber: '12345678', phone: '91234567' })),
+    contacts: Array.from({ length: 3 }, (_, i) => ({ name: `Person ${i}`, organization: 'Org', cardNumber: '123456', phone: '91234567' })),
   } as unknown as PublicRequest
 
   it('keeps the facts and contacts, and stays within 500 characters', () => {
     const text = bookingDescription(request)
     expect(text.length).toBeLessThanOrEqual(500)
     expect(text).toContain('Ønsket rom: Ingen preferanse')
-    expect(text).toContain('- Person 2 (Org), kortnr. 12345678, tlf. 91234567')
+    expect(text).toContain('- Person 2 (Org), kortnr. 123456, tlf. 91234567')
   })
 })
 
 describe('form messages', () => {
   const empty = { name: '', organization: '', cardNumber: '', phone: '' }
-  const filled = { name: 'Kari', organization: 'Jazzklubben', cardNumber: '12345678', phone: '91234567' }
+  const filled = { name: 'Kari', organization: 'Jazzklubben', cardNumber: '123456', phone: '91234567' }
 
   it('names the missing contact fields per person', () => {
     expect(missingContactFields([filled, { ...empty, name: 'Ola' }])).toEqual([
@@ -198,7 +200,7 @@ describe('handling status and guards', () => {
     preferredRoomId: null,
     preferredRoomName: 'Festplassen',
     description: '',
-    contacts: [{ name: 'Kari', organization: 'Org', cardNumber: '12345678', phone: '+4791234567' }],
+    contacts: [{ name: 'Kari', organization: 'Org', cardNumber: '123456', phone: '+4791234567' }],
     bookingId: null,
     booking: null,
     bookingRemovedAt: null,

@@ -58,7 +58,9 @@ export const emptyContact = (): PublicRequestContact => ({ name: '', organizatio
 
 const compact = (value: string) => value.replace(/[\s-]/g, '')
 
-const CARD_NUMBER = /^[0-9]{4,20}$/
+/** The number on the UiB card: exactly 6 digits, never the student number (backend `CARD_NUMBER_DIGITS`). */
+export const CARD_NUMBER_DIGITS = 6
+const CARD_NUMBER = new RegExp(`^[0-9]{${CARD_NUMBER_DIGITS}}$`)
 const PHONE = /^\+?[0-9]{8,15}$/
 
 /** Card number and phone in the backend's format: digits only (phone optionally with + first). */
@@ -77,7 +79,7 @@ export function contactFieldProblems(c: PublicRequestContact): Record<keyof Publ
 
 /**
  * Why a contact person can't be sent, or null. Same rules as the backend: everything filled in, a
- * card number of 4–20 digits (the UiB card number, not the student number) and a phone number of
+ * card number of exactly 6 digits (the UiB card number, not the student number) and a phone number of
  * 8–15 digits, optionally with + first. Spaces and hyphens are ignored.
  */
 export function contactProblem(c: PublicRequestContact): string | null {
@@ -85,7 +87,7 @@ export function contactProblem(c: PublicRequestContact): string | null {
     return 'Fyll ut navn, organisasjon, kortnummer og telefonnummer.'
   }
   if (!validCardNumber(c.cardNumber)) {
-    return 'Kortnummeret skal bare ha sifre. Bruk nummeret på UiB-kortet, ikke studentnummeret.'
+    return `Kortnummeret skal være de ${CARD_NUMBER_DIGITS} sifrene på UiB-kortet, ikke studentnummeret.`
   }
   if (!validPhone(c.phone)) {
     return 'Telefonnummeret må ha 8–15 sifre, eventuelt med + foran.'

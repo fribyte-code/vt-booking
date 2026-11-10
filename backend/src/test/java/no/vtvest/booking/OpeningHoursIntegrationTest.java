@@ -94,7 +94,7 @@ class OpeningHoursIntegrationTest extends IntegrationTest {
         String request = """
                 {"email":"a@example.test","organizationName":"Ekstern","eventName":"Fest","memberOfKulturstyretOrSamfunnet":false,
                  "preferredRoomId":null,"start":"%s","end":"%s","description":"Fest",
-                 "contacts":[{"name":"Kari","organization":"Ekstern","cardNumber":"12345678","phone":"91234567"}]}
+                 "contacts":[{"name":"Kari","organization":"Ekstern","cardNumber":"123456","phone":"91234567"}]}
                 """.formatted(on(DayOfWeek.WEDNESDAY, 12, 0), on(DayOfWeek.WEDNESDAY, 14, 0));
         mvc.perform(post("/api/public/requests").with(withCsrf())
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(request))
