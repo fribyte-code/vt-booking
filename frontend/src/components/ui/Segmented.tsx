@@ -29,7 +29,7 @@ export function Segmented<T extends string>({
             aria-pressed={on}
             onClick={() => onChange(o.id)}
             className={cn(
-              'flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium whitespace-nowrap focus-visible:outline-2 focus-visible:outline-blue-600',
+              'flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-sm font-medium whitespace-nowrap focus-visible:outline-2 focus-visible:outline-blue-600 sm:gap-1.5 sm:px-3',
               on ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900',
             )}
           >

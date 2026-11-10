@@ -12,19 +12,20 @@ export const NIGHT_KINDS: NightKind[] = ['BOOKING', 'REQUEST', 'PUBLIC_REQUEST']
 
 /** Which events the Natt tab lists. They come sorted by start. */
 export interface NightFilter {
-  kinds: NightKind[]
+  /** One kind, or ALL. */
+  kind: NightKind | 'ALL'
   /** A room id, or '' for every room. */
   roomId: string
   /** Only those without guards ordered. */
   withoutGuards: boolean
 }
 
-export const DEFAULT_NIGHT_FILTER: NightFilter = { kinds: [], roomId: '', withoutGuards: false }
+export const DEFAULT_NIGHT_FILTER: NightFilter = { kind: 'ALL', roomId: '', withoutGuards: false }
 
 export function filterNight(events: NightEvent[], f: NightFilter): NightEvent[] {
   return events.filter(
     (e) =>
-      (f.kinds.length === 0 || f.kinds.includes(e.kind)) &&
+      (f.kind === 'ALL' || e.kind === f.kind) &&
       (!f.roomId || e.roomId === f.roomId) &&
       (!f.withoutGuards || !e.guardsOrderedAt),
   )

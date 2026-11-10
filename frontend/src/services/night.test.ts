@@ -28,10 +28,10 @@ describe('night overview', () => {
   const ids = (f: Parameters<typeof filterNight>[1]) => filterNight(all, f).map((e) => e.title)
 
   it('filters by kind, room and guards, keeping the order', () => {
-    expect(ids({ kinds: [], roomId: '', withoutGuards: false })).toEqual(['Fest a', 'Fest b', 'Fest c'])
-    expect(ids({ kinds: ['REQUEST', 'PUBLIC_REQUEST'], roomId: '', withoutGuards: false })).toEqual(['Fest b', 'Fest c'])
-    expect(ids({ kinds: [], roomId: 'engen', withoutGuards: false })).toEqual(['Fest b'])
-    expect(ids({ kinds: [], roomId: '', withoutGuards: true })).toEqual(['Fest a', 'Fest c'])
+    expect(ids({ kind: 'ALL', roomId: '', withoutGuards: false })).toEqual(['Fest a', 'Fest b', 'Fest c'])
+    expect(ids({ kind: 'PUBLIC_REQUEST', roomId: '', withoutGuards: false })).toEqual(['Fest c'])
+    expect(ids({ kind: 'ALL', roomId: 'engen', withoutGuards: false })).toEqual(['Fest b'])
+    expect(ids({ kind: 'ALL', roomId: '', withoutGuards: true })).toEqual(['Fest a', 'Fest c'])
   })
 
   it('orders guards with the room in Studentvillaen and the contacts, phone where known', () => {

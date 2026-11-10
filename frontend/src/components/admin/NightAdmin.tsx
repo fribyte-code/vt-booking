@@ -20,6 +20,7 @@ import { DateBlock } from '../booking/DateBlock'
 import { NightBadge } from '../booking/badges'
 import { Button } from '../ui/Button'
 import { Alert, Select } from '../ui/fields'
+import { Segmented } from '../ui/Segmented'
 import { Modal } from '../ui/Modal'
 import { Chip } from './Chip'
 import { GuardsLink, PublicRequestDetails } from './PublicRequestDetails'
@@ -99,7 +100,7 @@ export function NightAdmin() {
   )
 }
 
-/** Type toggles with counts, the room, "only without guards". */
+/** One type at a time (with counts), the room, "only without guards". */
 function NightFilterBar({
   events,
   rooms,
@@ -114,32 +115,17 @@ function NightFilterBar({
   shown: number
 }) {
   const id = useId()
-  const toggle = (k: NightKind) =>
-    onChange({ ...filter, kinds: filter.kinds.includes(k) ? filter.kinds.filter((x) => x !== k) : [...filter.kinds, k] })
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Type">
-        {NIGHT_KINDS.map((k) => {
-          const on = filter.kinds.includes(k)
-          return (
-            <button
-              key={k}
-              type="button"
-              aria-pressed={on}
-              onClick={() => toggle(k)}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-sm font-medium ring-1 ring-inset',
-                on ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50',
-              )}
-            >
-              {nightKindLabels[k]}
-              <span className={cn('text-xs tabular-nums', on ? 'text-slate-300' : 'text-slate-500')}>
-                {events.filter((e) => e.kind === k).length}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      <Segmented
+        label="Type"
+        value={filter.kind}
+        onChange={(kind) => onChange({ ...filter, kind })}
+        options={[
+          { id: 'ALL' as const, label: 'Alle', count: events.length },
+          ...NIGHT_KINDS.map((k) => ({ id: k, label: nightKindLabels[k], count: events.filter((e) => e.kind === k).length })),
+        ]}
+      />
       <label htmlFor={`${id}-room`} className="sr-only">
         Rom
       </label>
