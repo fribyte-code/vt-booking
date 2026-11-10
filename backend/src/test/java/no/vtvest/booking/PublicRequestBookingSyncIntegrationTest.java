@@ -141,6 +141,16 @@ class PublicRequestBookingSyncIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    void aRequestOf22HoursCanBeBookedAndEditedAsOne() throws Exception {
+        UUID[] ids = requestWithBooking();
+
+        call(put("/api/admin/public-requests/" + ids[0]), ADMIN,
+                editJson("Hagekonsert", ROOM_B, oslo(10, 7, 0), oslo(11, 5, 0), "Konsert i hagen", CONTACT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.booking.end").value(oslo(11, 5, 0).toString()));
+    }
+
+    @Test
     void anEditTheBookingRefusesSavesNothing() throws Exception {
         UUID[] ids = requestWithBooking();
         createBooking(KARI, ROOM_A, ORG_A, at(8, 18), at(8, 20));
@@ -154,10 +164,6 @@ class PublicRequestBookingSyncIntegrationTest extends IntegrationTest {
         jdbc.update("INSERT INTO room_opening_hours (room_id, day_of_week, opens_minute, closes_minute) VALUES (?, 1, 600, 720)", ROOM_A);
         call(put("/api/admin/public-requests/" + ids[0]), ADMIN,
                 editJson("Vinterkonsert", ROOM_A, at(9, 18), at(9, 20), "Ny tekst", CONTACT))
-                .andExpect(status().isUnprocessableContent());
-        // Over the booking's maximum length, though within the request's 22 hours.
-        call(put("/api/admin/public-requests/" + ids[0]), ADMIN,
-                editJson("Vinterkonsert", ROOM_B, oslo(10, 7, 0), oslo(10, 21, 0), "Ny tekst", CONTACT))
                 .andExpect(status().isUnprocessableContent());
         // 05:00–07:00.
         call(put("/api/admin/public-requests/" + ids[0]), ADMIN,

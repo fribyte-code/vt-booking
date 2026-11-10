@@ -17,6 +17,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import no.vtvest.booking.booking.BookingLimits;
 import no.vtvest.booking.booking.BookingResponse;
 import no.vtvest.booking.booking.BookingService;
 import no.vtvest.booking.booking.CancelBookingRequest;
@@ -40,11 +41,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 class PublicRequestService {
 
-    /**
-     * 07:00 to 05:00 the next day, the longest the closed hours (05:00–07:00) leave. The admin
-     * adjusts the time when making the booking, where the booking rules (max 12 hours) apply.
-     */
-    static final Duration MAX_DURATION = Duration.ofHours(22);
     private static final Pattern CARD_NUMBER = Pattern.compile("^[0-9]{4,20}$");
     private static final Pattern PHONE = Pattern.compile("^\\+?[0-9]{8,15}$");
     /** As far ahead as a booking can be made (BookingService.MAX_ADVANCE). */
@@ -103,8 +99,8 @@ class PublicRequestService {
         if (!end.isAfter(start)) {
             throw new ApiException(ErrorCode.VALIDATION, "Sluttidspunktet må være etter starttidspunktet.");
         }
-        if (Duration.between(start, end).compareTo(MAX_DURATION) > 0) {
-            throw new ApiException(ErrorCode.VALIDATION, "Arrangementet kan vare i høyst 22 timer.");
+        if (Duration.between(start, end).compareTo(BookingLimits.MAX_DURATION) > 0) {
+            throw new ApiException(ErrorCode.VALIDATION, "Arrangementet kan vare i høyst " + BookingLimits.maxDurationText() + ".");
         }
         ClosedHours.require(start, end, zone);
     }
@@ -172,7 +168,7 @@ class PublicRequestService {
 
     /**
      * Brings the booking in line with an edited request, through {@link BookingService} with all
-     * its rules (conflicts, 05:00–07:00, opening hours, max length, not started). A time or room
+     * its rules (conflicts, 05:00–07:00, opening hours, not started). A time or room
      * different from the booking's moves it; a new event name becomes its title, and a change to
      * what its description is made from regenerates the description. Otherwise the booking is left
      * as it is, so a title or description the admin changed in the calendar is kept.

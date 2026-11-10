@@ -58,10 +58,13 @@ class BookingApiIntegrationTest extends IntegrationTest {
         create(OLA, bookingJson(ROOM_A, ORG_B, "Etterpå", at(8, 2), at(8, 3)))
                 .andExpect(status().isCreated());
 
-        // The 12-hour limit still applies across midnight.
-        create(KARI, bookingJson(ROOM_A, ORG_A, "For lang", at(9, 20), at(10, 9)))
+        // Up to 22 hours: 07:00 to 05:00 the next day, the whole time the closed hours leave.
+        create(KARI, bookingJson(ROOM_A, ORG_A, "Hele døgnet", oslo(9, 7, 0), oslo(10, 5, 0)))
+                .andExpect(status().isCreated());
+        create(KARI, bookingJson(ROOM_A, ORG_A, "For lang", oslo(11, 7, 0), oslo(12, 5, 15)))
                 .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.code").value("RULE_VIOLATION"));
+                .andExpect(jsonPath("$.code").value("RULE_VIOLATION"))
+                .andExpect(jsonPath("$.detail").value("En booking kan vare i høyst 22 timer."));
     }
 
     @Test
@@ -116,7 +119,7 @@ class BookingApiIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION"));
         create(KARI, bookingJson(ROOM_A, ORG_A, "Fortid", at(-1, 10), at(-1, 11)))
                 .andExpect(status().isBadRequest());
-        create(KARI, bookingJson(ROOM_A, ORG_A, "For lang", at(7, 0), at(7, 13)))
+        create(KARI, bookingJson(ROOM_A, ORG_A, "For lang", at(7, 0), at(7, 23)))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("RULE_VIOLATION"));
         create(KARI, bookingJson(ROOM_A, ORG_A, "For langt frem", at(200, 8), at(200, 9)))

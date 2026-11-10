@@ -41,14 +41,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Booking rules, enforced on every write: membership, room permission, time limits (no past
- * bookings, max 12 hours, max 180 days ahead, closed 05:00–07:00), conflicts, and the approval workflow. The
+ * bookings, max 22 hours (BookingLimits), max 180 days ahead, closed 05:00–07:00), conflicts, and the approval workflow. The
  * frontend mirrors them in bookingRules.ts for live feedback only. The database exclusion
  * constraint is the final guarantee against double booking under concurrency.
  */
 @Service
 public class BookingService {
 
-    static final Duration MAX_DURATION = Duration.ofHours(12);
     static final Duration MAX_ADVANCE = Duration.ofDays(180);
     static final Duration MAX_QUERY_RANGE = Duration.ofDays(62);
     /** How far back "my bookings" reaches. */
@@ -292,8 +291,8 @@ public class BookingService {
         if (start.isBefore(now)) {
             throw new ApiException(ErrorCode.VALIDATION, "Du kan ikke booke et tidspunkt som har passert.");
         }
-        if (Duration.between(start, end).compareTo(MAX_DURATION) > 0) {
-            throw new ApiException(ErrorCode.RULE_VIOLATION, "En booking kan vare maks 12 timer.");
+        if (Duration.between(start, end).compareTo(BookingLimits.MAX_DURATION) > 0) {
+            throw new ApiException(ErrorCode.RULE_VIOLATION, "En booking kan vare i høyst " + BookingLimits.maxDurationText() + ".");
         }
         if (start.isAfter(now.plus(MAX_ADVANCE))) {
             throw new ApiException(ErrorCode.RULE_VIOLATION, "Du kan ikke booke mer enn 180 dager frem i tid.");

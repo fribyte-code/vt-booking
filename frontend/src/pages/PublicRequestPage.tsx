@@ -9,14 +9,20 @@ import { combineDateTime, combineEnd, crossesMidnight, formatDate, toDateInput }
 import { errorMessage } from '../lib/errors'
 import type { PublicRequestContact } from '../services/adminApi'
 import { createApiClient } from '../services/apiClient'
-import { CLOSED_HOURS_MESSAGE, describeOpeningHours, openingHoursMessage, overlapsClosedHours, withinOpeningHours } from '../services/bookingRules'
+import {
+  CLOSED_HOURS_MESSAGE,
+  describeOpeningHours,
+  MAX_DURATION_HOURS,
+  openingHoursMessage,
+  overlapsClosedHours,
+  withinOpeningHours,
+} from '../services/bookingRules'
 import {
   contactProblem,
   emptyContact,
   listNorwegian,
   MAX_CONTACTS,
   missingContactFields,
-  PUBLIC_REQUEST_MAX_HOURS,
   type PublicRoom,
 } from '../services/publicRequests'
 
@@ -117,8 +123,8 @@ export function PublicRequestPage() {
   const room = rooms?.find((r) => r.id === roomId)
   const timeProblem = !times
     ? null
-    : Date.parse(end) - Date.parse(start) > PUBLIC_REQUEST_MAX_HOURS * 3_600_000
-      ? `Arrangementet kan vare i høyst ${PUBLIC_REQUEST_MAX_HOURS} timer.`
+    : Date.parse(end) - Date.parse(start) > MAX_DURATION_HOURS * 3_600_000
+      ? `Arrangementet kan vare i høyst ${MAX_DURATION_HOURS} timer.`
       : overlapsClosedHours(start, end)
         ? CLOSED_HOURS_MESSAGE
         : room && !withinOpeningHours(room.openingHours, start, end)

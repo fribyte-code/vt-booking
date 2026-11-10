@@ -24,8 +24,12 @@ export type RuleResult =
   | { ok: true; permission: Exclude<Permission, 'NONE'> }
   | { ok: false; code: ErrorCode; message: string; conflicts?: Booking[] }
 
-/** Same limits as the backend's BookingService. */
-export const MAX_DURATION_HOURS = 12
+/**
+ * The longest a booking, request or public request can last (backend `BookingLimits`): 07:00 to
+ * 05:00 the next day, all the closed hours leave.
+ */
+export const MAX_DURATION_HOURS = 22
+/** Same limit as the backend's BookingService. */
 export const MAX_ADVANCE_DAYS = 180
 /** No room can be used between these local hours (backend `ClosedHours`, time zone `booking.time-zone`). */
 export const CLOSED_FROM_HOUR = 5
@@ -268,7 +272,7 @@ function checkTimes(slot: TimeSlot, now: Date): Failure | null {
     return { ok: false, code: 'VALIDATION', message: 'Du kan ikke booke et tidspunkt som har passert.' }
   }
   if (end - start > MAX_DURATION_HOURS * HOUR) {
-    return { ok: false, code: 'RULE_VIOLATION', message: `En booking kan vare maks ${MAX_DURATION_HOURS} timer.` }
+    return { ok: false, code: 'RULE_VIOLATION', message: `En booking kan vare i høyst ${MAX_DURATION_HOURS} timer.` }
   }
   if (start > now.getTime() + MAX_ADVANCE_DAYS * 24 * HOUR) {
     return {

@@ -215,7 +215,7 @@ class BookingEditIntegrationTest extends IntegrationTest {
 
         edit(KARI, id, ROOM_A, "X", at(7, 9), at(7, 8)).andExpect(jsonPath("$.code").value("VALIDATION"));
         edit(KARI, id, ROOM_A, "X", at(-1, 8), at(-1, 9)).andExpect(jsonPath("$.code").value("VALIDATION"));
-        edit(KARI, id, ROOM_A, "X", at(7, 0), at(7, 13)).andExpect(jsonPath("$.code").value("RULE_VIOLATION"));
+        edit(KARI, id, ROOM_A, "X", at(7, 0), at(7, 23)).andExpect(jsonPath("$.code").value("RULE_VIOLATION"));
         edit(KARI, id, ROOM_A, "X", at(200, 8), at(200, 9)).andExpect(jsonPath("$.code").value("RULE_VIOLATION"));
         edit(KARI, id, ROOM_A, " ", at(7, 8), at(7, 9)).andExpect(status().isBadRequest());
         edit(KARI, id, ROOM_A, "x".repeat(81), at(7, 8), at(7, 9)).andExpect(status().isBadRequest());

@@ -2,8 +2,6 @@ import { crossesMidnight, formatDate, formatTimeRange, toDateInput } from '../li
 import type { OpeningHoursEntry, Organization, Room } from '../types'
 import type { PublicRequest, PublicRequestContact, PublicRequestStatus } from './adminApi'
 
-/** Same as the backend: 07:00 to 05:00 the next day is the longest the closed hours (05:00–07:00) leave. */
-export const PUBLIC_REQUEST_MAX_HOURS = 22
 export const MAX_CONTACTS = 10
 
 /** A room offered in the public form (`GET /api/public/rooms`): active and marked by an admin. */

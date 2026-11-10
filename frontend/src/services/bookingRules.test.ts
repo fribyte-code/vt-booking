@@ -57,9 +57,14 @@ describe('bookingRules', () => {
     expect(isExpiredRequest({ status: 'APPROVED', start: at(-1) }, NOW.getTime())).toBe(false)
   })
 
-  it('limits duration to 12 hours and booking to 180 days ahead', () => {
-    expect(evaluateBooking(data(), user, input(1, 13), NOW)).toMatchObject({ ok: true })
-    expect(evaluateBooking(data(), user, input(1, 13.5), NOW)).toMatchObject({ ok: false, code: 'RULE_VIOLATION' })
+  it('limits duration to 22 hours and booking to 180 days ahead', () => {
+    // NOW is 11:00 in Oslo: +20 h is 07:00 the next day, +42 h 05:00 the day after.
+    expect(evaluateBooking(data(), user, input(20, 42), NOW)).toMatchObject({ ok: true })
+    expect(evaluateBooking(data(), user, input(20, 42.25), NOW)).toMatchObject({
+      ok: false,
+      code: 'RULE_VIOLATION',
+      message: 'En booking kan vare i høyst 22 timer.',
+    })
     expect(evaluateBooking(data(), user, input(181 * 24, 181 * 24 + 1), NOW)).toMatchObject({
       ok: false,
       code: 'RULE_VIOLATION',
