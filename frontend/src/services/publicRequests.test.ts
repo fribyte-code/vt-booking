@@ -233,16 +233,18 @@ describe('handling status and guards', () => {
         status: 'APPROVED',
       },
     }
-    const ids = (f: Parameters<typeof filterPublicRequests>[1]) => filterPublicRequests([...all.slice(0, 2), moved], f).map((r) => r.id)
-    expect(ids({ statuses: [], nightOnly: true, sort: 'start' })).toEqual(['night', 'done'])
-    expect(ids({ statuses: [], nightOnly: false, sort: 'start' })).toEqual(['day', 'night', 'done'])
+    expect(filterPublicRequests([...all.slice(0, 2), moved], 'ALL').map((r) => r.id)).toEqual(['day', 'night', 'done'])
   })
 
-  it('filters by status and past midnight, sorted by start or by received', () => {
-    const ids = (f: Parameters<typeof filterPublicRequests>[1]) => filterPublicRequests(all, f).map((r) => r.id)
-    expect(ids({ statuses: ['NEW', 'IN_PROGRESS'], nightOnly: false, sort: 'start' })).toEqual(['day', 'night'])
-    expect(ids({ statuses: [], nightOnly: false, sort: 'received' })).toEqual(['day', 'done', 'night'])
-    expect(ids({ statuses: [], nightOnly: true, sort: 'start' })).toEqual(['night'])
+  it('shows one view at a time: open ones by event, handled ones by last handled', () => {
+    const ids = (view: Parameters<typeof filterPublicRequests>[1], list = all) => filterPublicRequests(list, view).map((r) => r.id)
+    expect(ids('OPEN')).toEqual(['day', 'night'])
+    expect(ids('DONE')).toEqual(['done'])
+    expect(ids('REJECTED')).toEqual([])
+    expect(ids('ALL')).toEqual(['done', 'day', 'night'])
+    const older = { ...all[2], id: 'older', updatedAt: '2030-02-10T10:00:00Z' }
+    const newer = { ...all[2], id: 'newer', updatedAt: '2030-02-15T10:00:00Z' }
+    expect(ids('DONE', [older, newer])).toEqual(['newer', 'older'])
   })
 
   it('fills in an order for guards with place, time and contacts', () => {

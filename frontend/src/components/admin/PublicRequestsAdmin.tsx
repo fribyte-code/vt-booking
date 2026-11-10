@@ -1,25 +1,25 @@
-import { Building2, Clock, Inbox, MapPin, Moon } from 'lucide-react'
-import { useCallback, useId, useState } from 'react'
+import { Building2, CalendarCheck, Clock, Inbox, MapPin, Moon } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { useApp } from '../../hooks/useApp'
-import { cn } from '../../lib/cn'
 import { crossesMidnight, formatDate, formatTimeRange } from '../../lib/dates'
-import { adminApi, type PublicRequest, type PublicRequestStatus } from '../../services/adminApi'
+import { adminApi, type PublicRequest } from '../../services/adminApi'
 import {
-  DEFAULT_PUBLIC_REQUEST_FILTER,
   filterPublicRequests,
+  inPublicRequestView,
   isOpenRequest,
-  PUBLIC_REQUEST_STATUSES,
-  type PublicRequestFilter,
+  PUBLIC_REQUEST_VIEWS,
   publicRequestStatusLabels,
   publicRequestStatusTones,
+  type PublicRequestView,
+  publicRequestViewLabels,
   requestWhen,
 } from '../../services/publicRequests'
 import { EmptyState } from '../booking/BookingListItem'
 import { DateBlock } from '../booking/DateBlock'
-import { NightBadge } from '../booking/badges'
-import { Alert, Select } from '../ui/fields'
+import { Alert } from '../ui/fields'
+import { Segmented } from '../ui/Segmented'
 import { Chip } from './Chip'
-import { BookingChip, PublicRequestDetails } from './PublicRequestDetails'
+import { PublicRequestDetails } from './PublicRequestDetails'
 import { useAdminData } from './useAdminData'
 
 /**
@@ -32,7 +32,7 @@ export function PublicRequestsAdmin() {
   const app = useApp()
   const load = useCallback(() => adminApi.publicRequests(), [])
   const { data: requests, error, reload } = useAdminData(load)
-  const [filter, setFilter] = useState<PublicRequestFilter>(DEFAULT_PUBLIC_REQUEST_FILTER)
+  const [view, setView] = useState<PublicRequestView>('OPEN')
   const [openId, setOpenId] = useState<string | null>(null)
 
   if (error) return <Alert tone="error">{error}</Alert>
@@ -43,7 +43,7 @@ export function PublicRequestsAdmin() {
     app.reload()
   }
 
-  const shown = filterPublicRequests(requests, filter)
+  const shown = filterPublicRequests(requests, view)
   const open = openId ? requests.find((r) => r.id === openId) : undefined
 
   return (
@@ -56,13 +56,22 @@ export function PublicRequestsAdmin() {
         av eksterne uten konto. Søkeren får ikke beskjed automatisk; svar på e-post.
       </p>
 
-      <RequestFilterBar requests={requests} filter={filter} onChange={setFilter} shown={shown.length} />
+      <Segmented
+        label="Vis forespørsler"
+        value={view}
+        onChange={setView}
+        options={PUBLIC_REQUEST_VIEWS.map((v) => ({
+          id: v,
+          label: publicRequestViewLabels[v],
+          count: requests.filter((r) => inPublicRequestView(r, v)).length,
+        }))}
+      />
       {shown.length === 0 ? (
-        <EmptyState icon={<Inbox />} title={requests.length === 0 ? 'Ingen forespørsler ennå' : 'Ingen forespørsler matcher filtreringen'} />
+        <EmptyState icon={<Inbox />} title={requests.length === 0 ? 'Ingen forespørsler ennå' : `Ingen forespørsler: ${publicRequestViewLabels[view].toLowerCase()}`} />
       ) : (
         <ul className="space-y-2">
           {shown.map((r) => (
-            <RequestRow key={r.id} request={r} onOpen={() => setOpenId(r.id)} />
+            <RequestRow key={r.id} request={r} showStatus={view === 'OPEN' || view === 'ALL'} onOpen={() => setOpenId(r.id)} />
           ))}
         </ul>
       )}
@@ -72,78 +81,18 @@ export function PublicRequestsAdmin() {
   )
 }
 
-/** Status toggles with counts, "only past midnight", and the order. */
-function RequestFilterBar({
-  requests,
-  filter,
-  onChange,
-  shown,
-}: {
-  requests: PublicRequest[]
-  filter: PublicRequestFilter
-  onChange: (filter: PublicRequestFilter) => void
-  shown: number
-}) {
-  const id = useId()
-  const toggle = (s: PublicRequestStatus) =>
-    onChange({
-      ...filter,
-      statuses: filter.statuses.includes(s) ? filter.statuses.filter((x) => x !== s) : [...filter.statuses, s],
-    })
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Status">
-        {PUBLIC_REQUEST_STATUSES.map((s) => {
-          const on = filter.statuses.includes(s)
-          const count = requests.filter((r) => r.status === s).length
-          return (
-            <button
-              key={s}
-              type="button"
-              aria-pressed={on}
-              onClick={() => toggle(s)}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-sm font-medium ring-1 ring-inset',
-                on ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50',
-              )}
-            >
-              {publicRequestStatusLabels[s]}
-              <span className={cn('text-xs tabular-nums', on ? 'text-slate-300' : 'text-slate-500')}>{count}</span>
-            </button>
-          )
-        })}
-      </div>
-      <label className="flex h-8 cursor-pointer items-center gap-2 rounded-full px-3 text-sm text-slate-700 ring-1 ring-slate-300 ring-inset hover:bg-slate-50">
-        <input type="checkbox" checked={filter.nightOnly} onChange={(e) => onChange({ ...filter, nightOnly: e.target.checked })} />
-        <Moon className="size-3.5" /> Bare over midnatt
-      </label>
-      <label htmlFor={`${id}-sort`} className="sr-only">
-        Sortering
-      </label>
-      <Select
-        id={`${id}-sort`}
-        className="h-8! w-auto!"
-        value={filter.sort}
-        onChange={(e) => onChange({ ...filter, sort: e.target.value as PublicRequestFilter['sort'] })}
-      >
-        <option value="start">Etter dato for arrangementet</option>
-        <option value="received">Sist mottatt først</option>
-      </Select>
-      <p role="status" className="ml-auto text-sm text-slate-500 tabular-nums">
-        {shown} av {requests.length}
-      </p>
-    </div>
-  )
-}
-
 /**
- * One request on one line, like a booking in the lists: date, time, room, organizer, status, a
- * night badge and whether a booking was made. Time and room are the booking's when there is one.
+ * One request on one line, like a booking in the lists: date, time, room, organizer. The status
+ * shows where the view mixes statuses; a booking and past midnight are icons with a tooltip.
+ * Time and room are the booking's when there is one.
  */
-function RequestRow({ request: r, onOpen }: { request: PublicRequest; onOpen: () => void }) {
+function RequestRow({ request: r, showStatus, onOpen }: { request: PublicRequest; showStatus: boolean; onOpen: () => void }) {
   const [now] = useState(() => Date.now())
   const when = requestWhen(r)
   const passed = isOpenRequest(r) && Date.parse(when.start) <= now
+  const night = crossesMidnight(when.start, when.end)
+  const nightText = `Over midnatt, slutter ${formatDate(when.end)}`
+  const bookedText = 'Booking opprettet. Tid og rom hentes fra bookingen.'
 
   return (
     <li>
@@ -156,18 +105,29 @@ function RequestRow({ request: r, onOpen }: { request: PublicRequest; onOpen: ()
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-semibold text-slate-900">{r.eventName}</span>
-            <Chip label={publicRequestStatusLabels[r.status]} tone={publicRequestStatusTones[r.status]} />
-            <BookingChip request={r} />
+            {showStatus && <Chip label={publicRequestStatusLabels[r.status]} tone={publicRequestStatusTones[r.status]} />}
+            {!r.booking && r.bookingRemovedAt && <Chip label="Booking slettet" tone="red" />}
             {passed && <Chip label="Tidspunktet har passert" tone="amber" />}
-            {crossesMidnight(when.start, when.end) && <NightBadge />}
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600 [&_svg]:size-3.5 [&_svg]:text-slate-400">
             <span className="flex items-center gap-1.5">
               <Clock /> <span className="sr-only">{formatDate(when.start)}, </span>
               {formatTimeRange(when.start, when.end)}
+              {night && (
+                <span role="img" aria-label={nightText} title={nightText} className="[&_svg]:text-indigo-600!">
+                  <Moon />
+                </span>
+              )}
             </span>
             <span className="flex items-center gap-1.5">
-              <MapPin /> {when.roomName ?? 'Ingen preferanse'}
+              {r.booking ? (
+                <span role="img" aria-label={bookedText} title={bookedText} className="[&_svg]:text-emerald-600!">
+                  <CalendarCheck />
+                </span>
+              ) : (
+                <MapPin />
+              )}
+              {when.roomName ?? 'Ingen preferanse'}
               {!when.booked && when.roomName && <span className="text-slate-400">(ønsket)</span>}
             </span>
             <span className="flex items-center gap-1.5">

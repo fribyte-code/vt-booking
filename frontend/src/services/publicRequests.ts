@@ -161,27 +161,37 @@ export const PUBLIC_REQUEST_STATUSES: PublicRequestStatus[] = ['NEW', 'IN_PROGRE
 /** Not decided yet: a booking can be made from it, or it can be rejected. */
 export const isOpenRequest = (r: Pick<PublicRequest, 'status'>) => r.status === 'NEW' || r.status === 'IN_PROGRESS'
 
-/** Which requests the Forespørsler tab lists, and in what order. */
-export interface PublicRequestFilter {
-  statuses: PublicRequestStatus[]
-  /** Only events that go past midnight. */
-  nightOnly: boolean
-  /** By the event's start (soonest first), or by when it was received (newest first). */
-  sort: 'start' | 'received'
+/**
+ * Which requests the Forespørsler tab lists: the open ones (ubehandlet and under arbeid), the done,
+ * the rejected, or all. One at a time.
+ */
+export type PublicRequestView = 'OPEN' | 'DONE' | 'REJECTED' | 'ALL'
+
+export const PUBLIC_REQUEST_VIEWS: PublicRequestView[] = ['OPEN', 'DONE', 'REJECTED', 'ALL']
+
+export const publicRequestViewLabels: Record<PublicRequestView, string> = {
+  OPEN: 'Åpne',
+  DONE: 'Ferdig',
+  REJECTED: 'Avslått',
+  ALL: 'Alle',
 }
 
-export const DEFAULT_PUBLIC_REQUEST_FILTER: PublicRequestFilter = { statuses: ['NEW', 'IN_PROGRESS'], nightOnly: false, sort: 'start' }
+export const inPublicRequestView = (r: Pick<PublicRequest, 'status'>, view: PublicRequestView) =>
+  view === 'ALL' || (view === 'OPEN' ? isOpenRequest(r) : r.status === view)
 
-/** By the time that counts ({@link requestWhen}): the booking's when there is one. */
-export function filterPublicRequests(requests: PublicRequest[], f: PublicRequestFilter): PublicRequest[] {
-  const night = (r: PublicRequest) => {
-    const { start, end } = requestWhen(r)
-    return crossesMidnight(start, end)
-  }
+/**
+ * The view's requests in its order: open ones and all by the time that counts ({@link
+ * requestWhen}, the booking's when there is one), soonest first; done and rejected ones by when
+ * they were last handled, newest first.
+ */
+export function filterPublicRequests(requests: PublicRequest[], view: PublicRequestView): PublicRequest[] {
+  const handled = (r: PublicRequest) => r.updatedAt ?? r.createdAt
   return requests
-    .filter((r) => (f.statuses.length === 0 || f.statuses.includes(r.status)) && (!f.nightOnly || night(r)))
+    .filter((r) => inPublicRequestView(r, view))
     .sort((a, b) =>
-      f.sort === 'start' ? requestWhen(a).start.localeCompare(requestWhen(b).start) : b.createdAt.localeCompare(a.createdAt),
+      view === 'DONE' || view === 'REJECTED'
+        ? handled(b).localeCompare(handled(a))
+        : requestWhen(a).start.localeCompare(requestWhen(b).start),
     )
 }
 
