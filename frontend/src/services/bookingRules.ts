@@ -27,10 +27,47 @@ export type RuleResult =
 /** Same limits as the backend's BookingService. */
 export const MAX_DURATION_HOURS = 12
 export const MAX_ADVANCE_DAYS = 180
+/** No room can be used between these local hours (backend `ClosedHours`, time zone `booking.time-zone`). */
+export const CLOSED_FROM_HOUR = 5
+export const CLOSED_TO_HOUR = 7
+export const CLOSED_HOURS_MESSAGE =
+  'Rommene kan ikke brukes mellom kl. 05:00 og 07:00. Velg et tidspunkt som slutter senest 05:00 eller starter tidligst 07:00.'
+const BOOKING_TIME_ZONE = 'Europe/Oslo'
 
 type Failure = Extract<RuleResult, { ok: false }>
 
 const HOUR = 60 * 60 * 1000
+const DAY = 24 * HOUR
+
+const osloParts = new Intl.DateTimeFormat('en-US', {
+  timeZone: BOOKING_TIME_ZONE,
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: 'numeric',
+  second: 'numeric',
+})
+
+/** The wall-clock time in the booking time zone, as milliseconds on a UTC scale. */
+function wallClock(ms: number): number {
+  const p = Object.fromEntries(osloParts.formatToParts(new Date(ms)).map((x) => [x.type, Number(x.value)]))
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) + (ms % 1000)
+}
+
+/**
+ * Whether [start, end) overlaps 05:00–07:00 local time on any day. Ending at 05:00 or starting at
+ * 07:00 is fine. Same as the backend's `ClosedHours.overlaps`, always in Europe/Oslo.
+ */
+export function overlapsClosedHours(start: string, end: string): boolean {
+  const s = wallClock(Date.parse(start))
+  const e = wallClock(Date.parse(end))
+  for (let day = Math.floor(s / DAY) * DAY; day <= e; day += DAY) {
+    if (s < day + CLOSED_TO_HOUR * HOUR && e > day + CLOSED_FROM_HOUR * HOUR) return true
+  }
+  return false
+}
 
 export const permissionLabels: Record<Permission, string> = {
   DIRECT: 'Direkte booking',
@@ -148,6 +185,9 @@ function checkTimes(slot: TimeSlot, now: Date): Failure | null {
       code: 'RULE_VIOLATION',
       message: `Du kan ikke booke mer enn ${MAX_ADVANCE_DAYS} dager frem i tid.`,
     }
+  }
+  if (overlapsClosedHours(slot.start, slot.end)) {
+    return { ok: false, code: 'RULE_VIOLATION', message: CLOSED_HOURS_MESSAGE }
   }
   return null
 }

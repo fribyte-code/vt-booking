@@ -17,7 +17,7 @@ Rombookingsystem for Velferdstinget Vest. Organisasjonene booker møterom og lok
 - **Søknader og godkjenning.** Ledigheten sjekkes på nytt når en søknad godkjennes. Søkeren ser avgjørelsen og en eventuell kommentar.
 - **Offentlig forespørselsskjema** på `/soknad` for å låne fellesarealene i Studentvillaen (Festplassen og Torgallmenningen) uten konto. Systemadministrator ser forespørslene under Administrasjon → Forespørsler, avslår dem eller oppretter en booking, vanligvis for den felles organisasjonen «Eksterne». Søkeren får svar på e-post; systemet sender ingen e-post selv.
 - **Gjentakende bookinger** hver 1–4 uke, som kan endres én og én eller «denne og følgende».
-- **Bookingregler:** ingen dobbeltbooking, maks 12 timer per booking og maks 180 dager frem i tid.
+- **Bookingregler:** ingen dobbeltbooking, maks 12 timer per booking, maks 180 dager frem i tid, og ingen rom kan brukes mellom kl. 05:00 og 07:00.
 - **Roller:** systemadministrator (brukere, organisasjoner, rom, tilganger og godkjenning) og organisasjonsadministrator (medlemmene i egen organisasjon).
 - **Innlogging** med e-post og passord. Nye brukere får et midlertidig passord som må byttes ved første innlogging.
 

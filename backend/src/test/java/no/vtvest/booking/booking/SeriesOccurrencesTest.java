@@ -76,6 +76,9 @@ class SeriesOccurrencesTest {
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.code()).isEqualTo(ErrorCode.VALIDATION));
         assertThatThrownBy(() -> service.occurrences(request("2026-10-05T06:00+02:00", "2026-10-05T19:00+02:00", 1, "2026-10-19")))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.code()).isEqualTo(ErrorCode.RULE_VIOLATION));
+        // 06:30 local is inside the closed hours (05:00–07:00).
+        assertThatThrownBy(() -> service.occurrences(request("2026-10-05T06:30+02:00", "2026-10-05T08:00+02:00", 1, "2026-10-19")))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.code()).isEqualTo(ErrorCode.RULE_VIOLATION));
     }
 
     // ── Shifting the following occurrences ──────────────────────────

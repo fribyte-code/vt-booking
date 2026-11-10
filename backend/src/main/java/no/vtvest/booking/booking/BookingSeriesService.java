@@ -184,7 +184,7 @@ public class BookingSeriesService {
             Slot slot = b == anchor
                     ? new Slot(newStart, newEnd)
                     : shifted(zone, anchor.getStartAt(), newStart, newEnd, b.getStartAt());
-            BookingService.validateTimes(slot.start(), slot.end(), now);
+            BookingService.validateTimes(slot.start(), slot.end(), now, zone);
             plan.put(b, slot);
         }
         List<Booking> moving = targets.stream()
@@ -449,7 +449,7 @@ public class BookingSeriesService {
                             + " dager frem, det vil si til og med " + NORWEGIAN_DATE.format(latest.atZone(zone)) + ".");
         }
         for (Slot slot : slots) {
-            BookingService.validateTimes(slot.start(), slot.end(), now);
+            BookingService.validateTimes(slot.start(), slot.end(), now, zone);
         }
         return slots;
     }

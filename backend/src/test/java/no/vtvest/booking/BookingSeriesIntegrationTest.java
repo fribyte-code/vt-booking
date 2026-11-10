@@ -80,7 +80,7 @@ class BookingSeriesIntegrationTest extends IntegrationTest {
     @Test
     void previewMarksTakenTimesAndWritesNothing() throws Exception {
         // Wide enough to cover the second occurrence whether or not a DST change comes between.
-        createBooking(OLA, ROOM_A, ORG_B, at(14, 5), at(14, 13));
+        createBooking(OLA, ROOM_A, ORG_B, at(14, 6), at(14, 12));
         int before = bookingCount();
 
         call(post("/api/bookings/series/preview"), KARI, seriesJson(ROOM_A, ORG_A, at(7, 8), at(7, 9), 4, false))
@@ -94,7 +94,7 @@ class BookingSeriesIntegrationTest extends IntegrationTest {
 
     @Test
     void conflictsFailTheWholeSeriesUnlessSkipped() throws Exception {
-        createBooking(OLA, ROOM_A, ORG_B, at(14, 5), at(14, 13));
+        createBooking(OLA, ROOM_A, ORG_B, at(14, 6), at(14, 12));
         int before = bookingCount();
 
         call(post("/api/bookings/series"), KARI, seriesJson(ROOM_A, ORG_A, at(7, 8), at(7, 9), 4, false))
@@ -118,8 +118,8 @@ class BookingSeriesIntegrationTest extends IntegrationTest {
 
     @Test
     void aSeriesWhereEveryTimeIsTakenIsRefusedEvenWhenSkipping() throws Exception {
-        createBooking(OLA, ROOM_A, ORG_B, at(7, 5), at(7, 13));
-        createBooking(OLA, ROOM_A, ORG_B, at(14, 5), at(14, 13));
+        createBooking(OLA, ROOM_A, ORG_B, at(7, 6), at(7, 12));
+        createBooking(OLA, ROOM_A, ORG_B, at(14, 6), at(14, 12));
         call(post("/api/bookings/series"), KARI, seriesJson(ROOM_A, ORG_A, at(7, 8), at(7, 9), 2, true))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.conflicts.length()").value(2));

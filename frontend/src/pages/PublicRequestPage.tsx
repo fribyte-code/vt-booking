@@ -6,6 +6,7 @@ import { cn } from '../lib/cn'
 import { combineDateTime, combineEnd, crossesMidnight, formatDate, toDateInput } from '../lib/dates'
 import { errorMessage } from '../lib/errors'
 import { createApiClient } from '../services/apiClient'
+import { CLOSED_HOURS_MESSAGE, overlapsClosedHours } from '../services/bookingRules'
 import { type PreferredArea, preferredAreas } from '../services/publicRequests'
 
 const api = createApiClient()
@@ -23,7 +24,9 @@ const TEXT = {
   member: 'Er organisasjonen medlem av Kulturstyret eller Studentersamfunnet?',
   area: 'Hvem som prioriteres er veiledende. Endelig avgjørelse tas ved behandling av forespørselen.',
   date: 'Datoen arrangementet starter.',
-  time: 'Slutter arrangementet etter midnatt, velg sluttidspunktet neste dag, f.eks. 20:00–02:00.',
+  time:
+    'Slutter arrangementet etter midnatt, velg sluttidspunktet neste dag, f.eks. 20:00–02:00. ' +
+    'Lokalene er stengt mellom kl. 05:00 og 07:00.',
   description: 'Beskriv arrangementet: hva som skal skje, omtrent hvor mange som kommer, og om det blir servering.',
   villaGuard: 'Trenger dere villavakt under arrangementet?',
   confirmation:
@@ -84,6 +87,7 @@ export function PublicRequestPage() {
   const start = combineDateTime(date, startTime)
   const end = combineEnd(date, startTime, endTime)
   const overnight = !!start && !!end && crossesMidnight(start, end)
+  const closedHours = !!start && !!end && startTime !== endTime && overlapsClosedHours(start, end)
   const missing = (value: string) => submitted && !value.trim()
 
   const submit = async (e: FormEvent) => {
@@ -97,6 +101,10 @@ export function PublicRequestPage() {
     // An end time at or before the start time means the next day, so equal times would be 24 hours.
     if (startTime === endTime) {
       setError('Starttidspunkt og sluttidspunkt kan ikke være like.')
+      return
+    }
+    if (closedHours) {
+      setError(CLOSED_HOURS_MESSAGE)
       return
     }
     setBusy(true)
@@ -256,6 +264,7 @@ export function PublicRequestPage() {
               <p className="text-xs text-slate-500">
                 {overnight ? `Slutter neste dag, ${formatDate(end)} kl. ${endTime}.` : `${TEXT.date} ${TEXT.time}`}
               </p>
+              {closedHours && <p className="text-xs text-red-600">{CLOSED_HOURS_MESSAGE}</p>}
             </div>
 
             <Field label="Beskrivelse av arrangementet" htmlFor={`${id}-desc`} hint={TEXT.description}>

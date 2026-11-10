@@ -8,11 +8,13 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 import no.vtvest.booking.booking.BookingResponse;
 import no.vtvest.booking.booking.BookingService;
 import no.vtvest.booking.booking.CreateBookingRequest;
+import no.vtvest.booking.booking.ClosedHours;
 import no.vtvest.booking.common.ApiException;
 import no.vtvest.booking.common.ErrorCode;
 import no.vtvest.booking.user.AccountService;
@@ -36,11 +38,13 @@ class PublicRequestService {
     private final JdbcTemplate jdbc;
     private final BookingService bookingService;
     private final Clock clock;
+    private final ZoneId zone;
 
-    PublicRequestService(JdbcTemplate jdbc, BookingService bookingService, Clock clock) {
+    PublicRequestService(JdbcTemplate jdbc, BookingService bookingService, Clock clock, ZoneId zone) {
         this.jdbc = jdbc;
         this.bookingService = bookingService;
         this.clock = clock;
+        this.zone = zone;
     }
 
     @Transactional
@@ -59,6 +63,7 @@ class PublicRequestService {
         if (start.isAfter(clock.instant().plus(MAX_ADVANCE))) {
             throw new ApiException(ErrorCode.VALIDATION, "Du kan søke om lån inntil 180 dager frem i tid.");
         }
+        ClosedHours.require(start, end, zone);
         jdbc.update("""
                 INSERT INTO public_requests (email, organization_name, event_name, member_of_kulturstyret_or_samfunnet,
                     preferred_area, start_at, end_at, description, needs_villa_guard, created_at)

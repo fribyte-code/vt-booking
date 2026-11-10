@@ -144,6 +144,20 @@ class PublicRequestIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    void theClosedHoursApplyToRequestsAndToTheAdminsBooking() throws Exception {
+        submitAnonymously(requestJson(oslo(7, 22, 0), oslo(8, 6, 0)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("RULE_VIOLATION"));
+
+        UUID id = submit(oslo(7, 22, 0), oslo(8, 5, 0));
+        call(post("/api/admin/public-requests/" + id + "/booking"), ADMIN,
+                        bookingJson(ROOM_A, ORG_B, "Konsert", oslo(7, 22, 0), oslo(8, 5, 30)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("RULE_VIOLATION"));
+        assertThat(requestStatus(id)).isEqualTo("NEW");
+    }
+
+    @Test
     void adminBooksOvernightForAnOrganizationTheyAreNotMemberOfAndTheRequestIsLinked() throws Exception {
         UUID id = submit(at(7, 20), at(8, 2));
 

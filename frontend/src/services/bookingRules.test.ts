@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { combineEnd } from '../lib/dates'
 import type { AppData, Booking, Room, User } from '../types'
-import { canChangeBooking, evaluateBooking, evaluateEdit, isExpiredRequest, matchesRequestFilter, roomsOnBehalf } from './bookingRules'
+import { canChangeBooking, evaluateBooking, evaluateEdit, isExpiredRequest, matchesRequestFilter, overlapsClosedHours, roomsOnBehalf } from './bookingRules'
 
 const NOW = new Date('2030-01-01T10:00:00Z')
 const HOUR = 3_600_000
@@ -183,5 +183,20 @@ describe('matchesRequestFilter', () => {
   it('ANDs the categories', () => {
     expect(ids(['A', 'B'], ['101', '102'])).toEqual(['A101', 'B102'])
     expect(ids(['C'], ['102'])).toEqual([])
+  })
+
+  it('closes every room between 05:00 and 07:00 Norwegian time', () => {
+    // Winter time (UTC+1).
+    expect(overlapsClosedHours('2030-01-04T20:00+01:00', '2030-01-05T05:00+01:00')).toBe(false)
+    expect(overlapsClosedHours('2030-01-05T07:00+01:00', '2030-01-05T12:00+01:00')).toBe(false)
+    expect(overlapsClosedHours('2030-01-04T22:00+01:00', '2030-01-05T05:15+01:00')).toBe(true)
+    expect(overlapsClosedHours('2030-01-05T06:45+01:00', '2030-01-05T10:00+01:00')).toBe(true)
+    expect(overlapsClosedHours('2030-01-05T05:30+01:00', '2030-01-05T06:30+01:00')).toBe(true)
+    // Summer time (UTC+2): 05:00 is 03:00Z.
+    expect(overlapsClosedHours('2030-07-01T01:00:00Z', '2030-07-01T03:00:00Z')).toBe(false)
+    expect(overlapsClosedHours('2030-07-01T01:00:00Z', '2030-07-01T03:30:00Z')).toBe(true)
+
+    const night = { roomId: 'r', organizationId: 'org', title: 'Fest', start: '2030-01-02T01:00+01:00', end: '2030-01-02T06:00+01:00' }
+    expect(evaluateBooking(data(), user, night, NOW)).toMatchObject({ ok: false, code: 'RULE_VIOLATION' })
   })
 })

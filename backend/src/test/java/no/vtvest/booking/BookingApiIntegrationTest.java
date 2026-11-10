@@ -96,6 +96,20 @@ class BookingApiIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    void roomsAreClosedBetweenFiveAndSeven() throws Exception {
+        create(KARI, bookingJson(ROOM_A, ORG_A, "Natt", oslo(7, 22, 0), oslo(8, 5, 30)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("RULE_VIOLATION"));
+        create(KARI, bookingJson(ROOM_A, ORG_A, "Morgen", oslo(7, 6, 30), oslo(7, 9, 0)))
+                .andExpect(status().isUnprocessableContent());
+        // Ending at 05:00 and starting at 07:00 are allowed.
+        create(KARI, bookingJson(ROOM_A, ORG_A, "Til fem", oslo(9, 22, 0), oslo(10, 5, 0)))
+                .andExpect(status().isCreated());
+        create(KARI, bookingJson(ROOM_A, ORG_A, "Fra sju", oslo(10, 7, 0), oslo(10, 9, 0)))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
     void invalidInputIsRejected() throws Exception {
         create(KARI, bookingJson(ROOM_A, ORG_A, "Feil rekkefølge", at(7, 10), at(7, 9)))
                 .andExpect(status().isBadRequest())

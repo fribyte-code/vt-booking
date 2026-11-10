@@ -67,7 +67,7 @@ Organization admins can add members (a new email creates an account; an existing
 ## 5. Booking rules
 
 - **Permission** per (organization, room): `DIRECT` books at once (`APPROVED`), `REQUEST` creates a request (`PENDING`), `NONE` cannot book. It is the `room_access` override if present, otherwise the room's `default_permission`. Disabled or archived rooms and archived organizations always give `NONE`.
-- **Limits:** no bookings in the past, at most 12 hours per booking, at most 180 days ahead. Title up to 80 characters, description up to 500.
+- **Limits:** no bookings in the past, at most 12 hours per booking, at most 180 days ahead, and no room can be used between 05:00 and 07:00 local time (ending at 05:00 or starting at 07:00 is fine; applies to everyone, admins and public requests included). Title up to 80 characters, description up to 500.
 - **Pending requests do not reserve the slot.** Several may overlap; only one can be approved. A request for a slot that is already approved is refused.
 - **Approval re-checks everything:** the requester's membership and account status, the organization's permission for the room, the start time and availability.
 - **Expired requests:** a `PENDING` request whose start has passed is expired. This is derived, not stored. It leaves the calendar and the admin queue and is shown as "Utløpt" in Mine bookinger.

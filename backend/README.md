@@ -144,6 +144,7 @@ Errors are RFC 9457 Problem Details with a stable `code` (and, for series confli
 - **Limits:**
   - No bookings in the past.
   - Max 12 hours per booking.
+  - No room between 05:00 and 07:00 local time (`ClosedHours`): a booking may end at 05:00 or start at 07:00. Also checked for public requests and admin bookings on behalf.
   - Max 180 days ahead.
   - Title up to 80 characters, description up to 500.
 - **Double booking** is prevented by the PostgreSQL exclusion constraint `bookings_no_overlap` on approved bookings. It holds under concurrent requests. The service's pre-check only provides the friendly error message.

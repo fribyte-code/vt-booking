@@ -82,6 +82,12 @@ abstract class IntegrationTest {
         return Instant.now().truncatedTo(ChronoUnit.DAYS).plus(days, ChronoUnit.DAYS).plus(hour, ChronoUnit.HOURS);
     }
 
+    /** Wall-clock time in Oslo (booking.time-zone), {@code days} from today. */
+    static Instant oslo(int days, int hour, int minute) {
+        java.time.ZoneId zone = java.time.ZoneId.of("Europe/Oslo");
+        return java.time.LocalDate.now(zone).plusDays(days).atTime(hour, minute).atZone(zone).toInstant();
+    }
+
     /**
      * Sends a matching XSRF-TOKEN cookie and X-XSRF-TOKEN header, exactly like the SPA will.
      * We avoid spring-security-test's csrf() helper: it swaps the CSRF repository in the

@@ -4,6 +4,7 @@ import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -37,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Booking rules, enforced on every write: membership, room permission, time limits (no past
- * bookings, max 12 hours, max 180 days ahead), conflicts, and the approval workflow. The
+ * bookings, max 12 hours, max 180 days ahead, closed 05:00–07:00), conflicts, and the approval workflow. The
  * frontend mirrors them in bookingRules.ts for live feedback only. The database exclusion
  * constraint is the final guarantee against double booking under concurrency.
  */
@@ -60,6 +61,7 @@ public class BookingService {
     private final MembershipRepository memberships;
     private final UserRepository users;
     private final Clock clock;
+    private final ZoneId zone;
 
     BookingService(
             BookingRepository bookings,
@@ -68,7 +70,8 @@ public class BookingService {
             OrganizationRepository organizations,
             MembershipRepository memberships,
             UserRepository users,
-            Clock clock) {
+            Clock clock,
+            ZoneId zone) {
         this.bookings = bookings;
         this.rooms = rooms;
         this.roomService = roomService;
@@ -76,6 +79,7 @@ public class BookingService {
         this.memberships = memberships;
         this.users = users;
         this.clock = clock;
+        this.zone = zone;
     }
 
     @Transactional
@@ -101,7 +105,7 @@ public class BookingService {
         Instant start = request.start().toInstant();
         Instant end = request.end().toInstant();
         Instant now = clock.instant();
-        validateTimes(start, end, now);
+        validateTimes(start, end, now, zone);
 
         Organization organization = requireMembership
                 ? requireMembership(actor, request.organizationId(), true)
@@ -148,7 +152,7 @@ public class BookingService {
         requireChangeable(actor, booking, request.version(), now, Change.EDIT);
         Instant start = request.start().toInstant();
         Instant end = request.end().toInstant();
-        validateTimes(start, end, now);
+        validateTimes(start, end, now, zone);
         String title = request.title().strip();
         String description = blankToNull(request.description());
 
@@ -252,7 +256,7 @@ public class BookingService {
     // ── Rules shared by single bookings, edits and series ─────────
 
     /** Time rules for a new or moved booking, measured against the server clock. */
-    static void validateTimes(Instant start, Instant end, Instant now) {
+    static void validateTimes(Instant start, Instant end, Instant now, ZoneId zone) {
         if (!end.isAfter(start)) {
             throw new ApiException(ErrorCode.VALIDATION, "Sluttidspunktet må være etter starttidspunktet.");
         }
@@ -265,6 +269,7 @@ public class BookingService {
         if (start.isAfter(now.plus(MAX_ADVANCE))) {
             throw new ApiException(ErrorCode.RULE_VIOLATION, "Du kan ikke booke mer enn 180 dager frem i tid.");
         }
+        ClosedHours.require(start, end, zone);
     }
 
     /**
