@@ -3,6 +3,7 @@ package no.vtvest.booking;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -261,7 +262,7 @@ class PublicRequestIntegrationTest extends IntegrationTest {
                 .andReturn().getResponse().getContentAsString();
         String bookingId = com.jayway.jsonpath.JsonPath.read(body, "$.id");
 
-        assertThat(requestStatus(id)).isEqualTo("TRANSFERRED");
+        assertThat(requestStatus(id)).isEqualTo("DONE");
         assertThat(jdbc.queryForObject("SELECT booking_id FROM public_requests WHERE id = ?", UUID.class, id))
                 .isEqualTo(UUID.fromString(bookingId));
 
@@ -286,7 +287,7 @@ class PublicRequestIntegrationTest extends IntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("APPROVED"))
                 .andExpect(jsonPath("$.organizationId").value(ORG_C.toString()));
-        assertThat(requestStatus(id)).isEqualTo("TRANSFERRED");
+        assertThat(requestStatus(id)).isEqualTo("DONE");
 
         // No access was granted, and the booking still blocks the slot.
         assertThat(jdbc.queryForObject("SELECT permission FROM room_access WHERE room_id = ? AND organization_id = ?",
@@ -313,7 +314,7 @@ class PublicRequestIntegrationTest extends IntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("APPROVED"))
                 .andExpect(jsonPath("$.requiresApproval").value(false));
-        assertThat(requestStatus(id)).isEqualTo("TRANSFERRED");
+        assertThat(requestStatus(id)).isEqualTo("DONE");
         assertThat(jdbc.queryForObject("SELECT permission FROM room_access WHERE room_id = ? AND organization_id = ?",
                 String.class, ROOM_B, ORG_A)).isEqualTo("REQUEST");
     }
@@ -338,5 +339,89 @@ class PublicRequestIntegrationTest extends IntegrationTest {
         assertThat(requestStatus(id)).isEqualTo("NEW");
         assertThat(jdbc.queryForObject("SELECT booking_id FROM public_requests WHERE id = ?", UUID.class, id)).isNull();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM bookings", Integer.class)).isEqualTo(1);
+    }
+
+    // ── Handling status and edits ───────────────────────────────────
+
+    private static String statusJson(String status) {
+        return "{\"status\":\"" + status + "\"}";
+    }
+
+    @Test
+    void adminsSetTheHandlingStatusAndOnlyNewOnesCountAsUnhandled() throws Exception {
+        UUID id = submit(at(7, 18), at(7, 20));
+        submit(at(8, 18), at(8, 20));
+
+        call(put("/api/admin/public-requests/" + id + "/status"), ADMIN, statusJson("IN_PROGRESS"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.updatedByName").value("Silje Aas"))
+                .andExpect(jsonPath("$.updatedAt").isString());
+        call(get("/api/admin/public-requests/count"), ADMIN, null).andExpect(jsonPath("$.count").value(1));
+
+        // In progress can still be booked; the booking marks it done.
+        call(post("/api/admin/public-requests/" + id + "/booking"), ADMIN, bookingJson(STORSALEN, ORG_B, "Konsert", at(7, 18), at(7, 20)))
+                .andExpect(status().isCreated());
+        assertThat(requestStatus(id)).isEqualTo("DONE");
+
+        // Reopened, it keeps its booking and can't get another.
+        call(put("/api/admin/public-requests/" + id + "/status"), ADMIN, statusJson("IN_PROGRESS")).andExpect(status().isOk());
+        call(post("/api/admin/public-requests/" + id + "/booking"), ADMIN, bookingJson(STORSALEN, ORG_B, "Igjen", at(9, 18), at(9, 20)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+        // But it can be rejected, or marked done by hand.
+        call(post("/api/admin/public-requests/" + id + "/reject"), ADMIN, null).andExpect(jsonPath("$.status").value("REJECTED"));
+        call(put("/api/admin/public-requests/" + id + "/status"), ADMIN, statusJson("DONE")).andExpect(jsonPath("$.status").value("DONE"));
+
+        call(put("/api/admin/public-requests/" + id + "/status"), ADMIN, statusJson("TRANSFERRED")).andExpect(status().isBadRequest());
+        call(put("/api/admin/public-requests/" + id + "/status"), KARI, statusJson("NEW")).andExpect(status().isForbidden());
+        call(put("/api/admin/public-requests/" + UUID.randomUUID() + "/status"), ADMIN, statusJson("NEW")).andExpect(status().isNotFound());
+    }
+
+    private static String editJson(Instant start, Instant end, String roomId, String contacts) {
+        return """
+                {"email":"Ny@Example.TEST","organizationName":"Ny forening","eventName":"Vinterkonsert","memberOfKulturstyretOrSamfunnet":false,
+                 "preferredRoomId":%s,"start":"%s","end":"%s","description":"Endret","contacts":%s}
+                """.formatted(roomId, start, end, contacts);
+    }
+
+    @Test
+    void adminsEditARequestAtAnyStatus() throws Exception {
+        UUID id = submit(at(7, 18), at(7, 20));
+        call(post("/api/admin/public-requests/" + id + "/reject"), ADMIN, null).andExpect(status().isOk());
+        String second = CONTACT.replace(" Kari Nordmann ", "Ola").replace("1234 5678", "87654321");
+
+        // Any room that isn't archived, also one not offered in the form.
+        call(put("/api/admin/public-requests/" + id), ADMIN, editJson(at(8, 18), at(8, 21), "\"" + ROOM_A + "\"", "[" + CONTACT + "," + second + "]"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("ny@example.test"))
+                .andExpect(jsonPath("$.eventName").value("Vinterkonsert"))
+                .andExpect(jsonPath("$.preferredRoomId").value(ROOM_A.toString()))
+                .andExpect(jsonPath("$.preferredRoomName").value("Møterom A"))
+                .andExpect(jsonPath("$.contacts.length()").value(2))
+                .andExpect(jsonPath("$.contacts[1].name").value("Ola"))
+                .andExpect(jsonPath("$.status").value("REJECTED"))
+                .andExpect(jsonPath("$.updatedByName").value("Silje Aas"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM public_request_contacts WHERE request_id = ?", Integer.class, id)).isEqualTo(2);
+
+        // A time that has passed is fine for an edit (the request may be old); the time rules aren't.
+        call(put("/api/admin/public-requests/" + id), ADMIN, editJson(at(-3, 18), at(-3, 20), "null", "[" + CONTACT + "]"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.preferredRoomId").doesNotExist());
+        call(put("/api/admin/public-requests/" + id), ADMIN, editJson(oslo(8, 22, 0), oslo(9, 6, 0), "null", "[" + CONTACT + "]"))
+                .andExpect(status().isUnprocessableContent());
+        call(put("/api/admin/public-requests/" + id), ADMIN, editJson(at(8, 18), at(8, 20), "null", "[]"))
+                .andExpect(status().isBadRequest());
+        call(put("/api/admin/public-requests/" + id), ADMIN, editJson(at(8, 18), at(8, 20), "null", "[" + CONTACT.replace("1234 5678", "s1") + "]"))
+                .andExpect(status().isBadRequest());
+        jdbc.update("UPDATE rooms SET status = 'ARCHIVED' WHERE id = ?", ROOM_B);
+        call(put("/api/admin/public-requests/" + id), ADMIN, editJson(at(8, 18), at(8, 20), "\"" + ROOM_B + "\"", "[" + CONTACT + "]"))
+                .andExpect(status().isBadRequest());
+
+        call(put("/api/admin/public-requests/" + id), KARI, editJson(at(8, 18), at(8, 20), "null", "[" + CONTACT + "]"))
+                .andExpect(status().isForbidden());
+        mvc.perform(put("/api/admin/public-requests/" + id).with(withCsrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(editJson(at(8, 18), at(8, 20), "null", "[" + CONTACT + "]")))
+                .andExpect(status().isUnauthorized());
     }
 }

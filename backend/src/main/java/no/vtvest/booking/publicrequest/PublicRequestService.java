@@ -65,19 +65,13 @@ class PublicRequestService {
     void submit(SubmitPublicRequest body) {
         Instant start = body.start().toInstant();
         Instant end = body.end().toInstant();
-        if (!end.isAfter(start)) {
-            throw new ApiException(ErrorCode.VALIDATION, "Sluttidspunktet må være etter starttidspunktet.");
-        }
-        if (Duration.between(start, end).compareTo(MAX_DURATION) > 0) {
-            throw new ApiException(ErrorCode.VALIDATION, "Arrangementet kan vare i høyst 22 timer.");
-        }
+        validateTimes(start, end);
         if (!start.isAfter(clock.instant())) {
             throw new ApiException(ErrorCode.VALIDATION, "Tidspunktet har allerede vært.");
         }
         if (start.isAfter(clock.instant().plus(MAX_ADVANCE))) {
             throw new ApiException(ErrorCode.VALIDATION, "Du kan søke om lån inntil 180 dager frem i tid.");
         }
-        ClosedHours.require(start, end, zone);
         String roomName = requestableRoomName(body.preferredRoomId(), start, end);
         List<Contact> contacts = body.contacts().stream().map(PublicRequestService::normalize).toList();
 
@@ -97,13 +91,80 @@ class PublicRequestService {
                 Timestamp.from(end),
                 body.description().strip(),
                 Timestamp.from(clock.instant()));
+        insertContacts(id, contacts);
+    }
+
+    /** End after start, at most 22 hours, and not overlapping 05:00–07:00: for the form and for edits. */
+    private void validateTimes(Instant start, Instant end) {
+        if (!end.isAfter(start)) {
+            throw new ApiException(ErrorCode.VALIDATION, "Sluttidspunktet må være etter starttidspunktet.");
+        }
+        if (Duration.between(start, end).compareTo(MAX_DURATION) > 0) {
+            throw new ApiException(ErrorCode.VALIDATION, "Arrangementet kan vare i høyst 22 timer.");
+        }
+        ClosedHours.require(start, end, zone);
+    }
+
+    private void insertContacts(UUID requestId, List<Contact> contacts) {
         for (int i = 0; i < contacts.size(); i++) {
             Contact c = contacts.get(i);
             jdbc.update("""
                     INSERT INTO public_request_contacts (request_id, position, name, organization, card_number, phone)
                     VALUES (?, ?, ?, ?, ?, ?)
-                    """, id, i, c.name(), c.organization(), c.cardNumber(), c.phone());
+                    """, requestId, i, c.name(), c.organization(), c.cardNumber(), c.phone());
         }
+    }
+
+    /**
+     * A system admin corrects a request, at any status (also after it is handled). The same rules
+     * as the form apply, except that the time may have passed and any room that isn't archived can
+     * be chosen; opening hours are left to the booking. A booking made from it is not changed.
+     */
+    @Transactional
+    PublicRequest update(User actor, UUID id, EditPublicRequest body) {
+        requireSystemAdmin(actor);
+        lock(id);
+        Instant start = body.start().toInstant();
+        Instant end = body.end().toInstant();
+        validateTimes(start, end);
+        String roomName = body.preferredRoomId() == null ? null : jdbc.query(
+                        "SELECT name FROM rooms WHERE id = ? AND status <> 'ARCHIVED'", (rs, i) -> rs.getString("name"),
+                        body.preferredRoomId())
+                .stream().findFirst()
+                .orElseThrow(() -> new ApiException(ErrorCode.VALIDATION, "Rommet finnes ikke."));
+        List<Contact> contacts = body.contacts().stream().map(PublicRequestService::normalize).toList();
+
+        jdbc.update("""
+                UPDATE public_requests SET email = ?, organization_name = ?, event_name = ?,
+                    member_of_kulturstyret_or_samfunnet = ?, preferred_room_id = ?, preferred_room_name = ?,
+                    start_at = ?, end_at = ?, description = ?, updated_at = ?, updated_by_id = ?
+                WHERE id = ?
+                """,
+                AccountService.normalizeEmail(body.email()),
+                body.organizationName().strip(),
+                body.eventName().strip(),
+                body.memberOfKulturstyretOrSamfunnet(),
+                body.preferredRoomId(),
+                roomName,
+                Timestamp.from(start),
+                Timestamp.from(end),
+                body.description().strip(),
+                Timestamp.from(clock.instant()),
+                actor.getId(),
+                id);
+        jdbc.update("DELETE FROM public_request_contacts WHERE request_id = ?", id);
+        insertContacts(id, contacts);
+        return find(id);
+    }
+
+    /** A system admin sets the handling status, to any of the four, e.g. "under arbeid" or "ferdig" outside the system. */
+    @Transactional
+    PublicRequest setStatus(User actor, UUID id, Status status) {
+        requireSystemAdmin(actor);
+        lock(id);
+        jdbc.update("UPDATE public_requests SET status = ?, updated_at = ?, updated_by_id = ? WHERE id = ?",
+                status.name(), Timestamp.from(clock.instant()), actor.getId(), id);
+        return find(id);
     }
 
     /**
@@ -160,7 +221,7 @@ class PublicRequestService {
         return jdbc.query(REQUESTS + " ORDER BY p.created_at DESC", (rs, i) -> toRequest(rs, contacts));
     }
 
-    /** How many requests are not handled yet (NEW), for the admin's badge. */
+    /** How many requests nobody has started on (NEW), for the admin's badge. */
     @Transactional(readOnly = true)
     long countNew(User actor) {
         requireSystemAdmin(actor);
@@ -168,24 +229,28 @@ class PublicRequestService {
         return count == null ? 0 : count;
     }
 
+    /** Rejects an open (NEW or IN_PROGRESS) request. */
     @Transactional
     PublicRequest reject(User actor, UUID id) {
         requireSystemAdmin(actor);
-        lockNew(id);
-        jdbc.update("UPDATE public_requests SET status = 'REJECTED' WHERE id = ?", id);
-        return find(id);
+        lockOpen(id);
+        return setStatus(actor, id, Status.REJECTED);
     }
 
     /**
-     * Creates the booking and marks the request as transferred, in one transaction: if the booking
-     * is refused (conflict, missing access, invalid time), the request stays NEW.
+     * Creates the booking and marks the request DONE with the booking, in one transaction: if the
+     * booking is refused (conflict, missing access, invalid time), the request is left as it was.
+     * Only an open request without a booking; one reopened after its booking was made keeps that.
      */
     @Transactional
     BookingResponse createBooking(User actor, UUID id, CreateBookingRequest booking) {
         requireSystemAdmin(actor);
-        lockNew(id);
+        if (lockOpen(id) != null) {
+            throw new ApiException(ErrorCode.INVALID_STATE, "Forespørselen har allerede en booking.");
+        }
         BookingResponse created = bookingService.createOnBehalf(actor, booking);
-        jdbc.update("UPDATE public_requests SET status = 'TRANSFERRED', booking_id = ? WHERE id = ?", created.id(), id);
+        jdbc.update("UPDATE public_requests SET status = 'DONE', booking_id = ?, updated_at = ?, updated_by_id = ? WHERE id = ?",
+                created.id(), Timestamp.from(clock.instant()), actor.getId(), id);
         return created;
     }
 
@@ -195,15 +260,20 @@ class PublicRequestService {
         }
     }
 
-    /** Locks the request, so two admins can't handle it at the same time, and requires it to be unhandled. */
-    private void lockNew(UUID id) {
-        String status = jdbc.query("SELECT status FROM public_requests WHERE id = ? FOR UPDATE",
-                        (rs, i) -> rs.getString("status"), id)
+    /** Locks the request, so two admins can't change it at the same time. Returns its status. */
+    private String lock(UUID id) {
+        return jdbc.query("SELECT status FROM public_requests WHERE id = ? FOR UPDATE", (rs, i) -> rs.getString("status"), id)
                 .stream().findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Forespørselen finnes ikke."));
-        if (!Status.NEW.name().equals(status)) {
+    }
+
+    /** Locks the request and requires it to be open (NEW or IN_PROGRESS). Returns its booking id, or null. */
+    private UUID lockOpen(UUID id) {
+        String status = lock(id);
+        if (!Status.NEW.name().equals(status) && !Status.IN_PROGRESS.name().equals(status)) {
             throw new ApiException(ErrorCode.INVALID_STATE, "Forespørselen er allerede behandlet.");
         }
+        return jdbc.queryForObject("SELECT booking_id FROM public_requests WHERE id = ?", UUID.class, id);
     }
 
     private PublicRequest find(UUID id) {
@@ -214,8 +284,8 @@ class PublicRequestService {
 
     /** With the room's current name, or the name it had when asked for if it has been deleted. */
     private static final String REQUESTS = """
-            SELECT p.*, coalesce(r.name, p.preferred_room_name) AS room_name
-            FROM public_requests p LEFT JOIN rooms r ON r.id = p.preferred_room_id
+            SELECT p.*, coalesce(r.name, p.preferred_room_name) AS room_name, u.display_name AS updated_by_name
+            FROM public_requests p LEFT JOIN rooms r ON r.id = p.preferred_room_id LEFT JOIN users u ON u.id = p.updated_by_id
             """;
 
     private Map<UUID, List<Contact>> contactsByRequest(String sql, Object... args) {
@@ -242,6 +312,8 @@ class PublicRequestService {
                 new ArrayList<>(contacts.getOrDefault(id, List.of())),
                 Status.valueOf(rs.getString("status")),
                 rs.getTimestamp("created_at").toInstant(),
-                rs.getObject("booking_id", UUID.class));
+                rs.getObject("booking_id", UUID.class),
+                rs.getTimestamp("updated_at") == null ? null : rs.getTimestamp("updated_at").toInstant(),
+                rs.getString("updated_by_name"));
     }
 }

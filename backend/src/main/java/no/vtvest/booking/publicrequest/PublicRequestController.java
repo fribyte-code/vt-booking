@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -56,6 +57,18 @@ class PublicRequestController {
     @GetMapping("/api/admin/public-requests/count")
     PublicRequestCount count() {
         return new PublicRequestCount(requests.countNew(currentUser.require()));
+    }
+
+    /** Corrects the request, at any status. The booking made from it is not changed. */
+    @PutMapping("/api/admin/public-requests/{id}")
+    PublicRequest update(@PathVariable UUID id, @Valid @RequestBody EditPublicRequest body) {
+        return requests.update(currentUser.require(), id, body);
+    }
+
+    /** Sets the handling status: NEW, IN_PROGRESS, DONE or REJECTED. */
+    @PutMapping("/api/admin/public-requests/{id}/status")
+    PublicRequest setStatus(@PathVariable UUID id, @Valid @RequestBody SetStatus body) {
+        return requests.setStatus(currentUser.require(), id, body.status());
     }
 
     @PostMapping("/api/admin/public-requests/{id}/reject")

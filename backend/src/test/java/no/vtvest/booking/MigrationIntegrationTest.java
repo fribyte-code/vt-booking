@@ -119,4 +119,23 @@ class MigrationIntegrationTest extends IntegrationTest {
                         "c@example.test null null");
         jdbc.execute("DROP SCHEMA " + schema + " CASCADE");
     }
+
+    @Test
+    void v10TurnsTransferredRequestsIntoDone() {
+        String schema = "migration_test_v10";
+        jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+        Flyway.configure().dataSource(dataSource).schemas(schema).target("9").load().migrate();
+        jdbc.update("INSERT INTO " + schema + ".public_requests (email, organization_name, event_name, member_of_kulturstyret_or_samfunnet, "
+                + "start_at, end_at, description, status) VALUES "
+                + "('a@example.test', 'Org', 'Fest', true, now() + interval '1 day', now() + interval '25 hours', 'Fest', 'TRANSFERRED'), "
+                + "('b@example.test', 'Org', 'Fest', true, now() + interval '1 day', now() + interval '25 hours', 'Fest', 'NEW')");
+
+        Flyway.configure().dataSource(dataSource).schemas(schema).load().migrate();
+
+        assertThat(jdbc.queryForList("SELECT status FROM " + schema + ".public_requests ORDER BY email", String.class))
+                .containsExactly("DONE", "NEW");
+        assertThatThrownBy(() -> jdbc.update("UPDATE " + schema + ".public_requests SET status = 'TRANSFERRED'"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        jdbc.execute("DROP SCHEMA " + schema + " CASCADE");
+    }
 }

@@ -17,7 +17,8 @@ final class PublicRequestDtos {
 
     static final int MAX_CONTACTS = 10;
 
-    enum Status { NEW, TRANSFERRED, REJECTED }
+    /** Set by the system admin: ubehandlet, under arbeid, ferdig, avslått. Creating a booking sets DONE. */
+    enum Status { NEW, IN_PROGRESS, DONE, REJECTED }
 
     /**
      * A person responsible at the event. {@code cardNumber} is the UiB card number, never the
@@ -44,6 +45,23 @@ final class PublicRequestDtos {
             @NotBlank @Size(max = 2000) String description,
             @NotNull @Size(min = 1, max = MAX_CONTACTS) List<@NotNull @Valid Contact> contacts) {}
 
+    /**
+     * A system admin's edit of a request, at any status: the same fields as the form. The room can
+     * be any room that isn't archived, or null for no preference. The linked booking is not changed.
+     */
+    record EditPublicRequest(
+            @NotBlank @Size(max = 254) String email,
+            @NotBlank @Size(max = 120) String organizationName,
+            @NotBlank @Size(max = 80) String eventName,
+            @NotNull Boolean memberOfKulturstyretOrSamfunnet,
+            UUID preferredRoomId,
+            @NotNull OffsetDateTime start,
+            @NotNull OffsetDateTime end,
+            @NotBlank @Size(max = 2000) String description,
+            @NotNull @Size(min = 1, max = MAX_CONTACTS) List<@NotNull @Valid Contact> contacts) {}
+
+    record SetStatus(@NotNull Status status) {}
+
     /** A room the public form offers: active and marked as requestable by an admin. */
     record PublicRoom(UUID id, String name, String description, Integer capacity, List<OpeningHours.Entry> openingHours) {}
 
@@ -67,5 +85,8 @@ final class PublicRequestDtos {
             List<Contact> contacts,
             Status status,
             Instant createdAt,
-            UUID bookingId) {}
+            UUID bookingId,
+            /** The last edit or status change by an admin, or null. */
+            Instant updatedAt,
+            String updatedByName) {}
 }
