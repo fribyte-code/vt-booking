@@ -92,7 +92,7 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
   // someone else made meanwhile gives a conflict instead of being overwritten by this form.
   const [original] = useState(editing)
   const app = useApp()
-  const { data, currentUser, visibleRoomIds } = app
+  const { data, currentUser } = app
   const formId = useId()
 
   // From a public request, an admin books for any active organization ("Eksterne" first).
@@ -115,14 +115,10 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
   const roomById = (id: string) => rooms.find((r) => r.id === id)
   // A public request goes to "Eksterne" unless the admin picks another; without it, nothing is preselected.
   const initialOrg = forRequest ? forRequest.preselected : (orgs[0]?.id ?? '')
-  // An empty draft.roomId (a public request without a matching room) leaves the choice to the user.
-  const initialRoom =
-    editing?.roomId ??
-    draft.roomId ??
-    [...rooms]
-      .sort((a, b) => Number(visibleRoomIds.includes(b.id)) - Number(visibleRoomIds.includes(a.id)))
-      .find((r) => getPermission(r, initialOrg) !== 'NONE')?.id ??
-    rooms[0]?.id
+  // Only a room the user already chose (the booking edited, a room column in the calendar, a public
+  // request's room) is preselected. Otherwise the user picks one, so nobody books the wrong room
+  // by accident.
+  const initialRoom = editing?.roomId ?? draft.roomId ?? ''
 
   const [date, setDate] = useState(toDateInput(initialStart))
   const [startTime, setStartTime] = useState(toTimeInput(initialStart))
@@ -217,10 +213,8 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
 
   const changeOrganization = (id: string) => {
     setOrganizationId(id)
-    if (roomId && getPermission(roomById(roomId), id) === 'NONE') {
-      const alternative = rooms.find((r) => getPermission(r, id) !== 'NONE')
-      if (alternative) setRoomId(alternative.id)
-    }
+    // A room the new organization can't book is deselected rather than swapped for another.
+    if (roomId && getPermission(roomById(roomId), id) === 'NONE') setRoomId('')
   }
 
   const run = async (action: () => Promise<void>) => {
@@ -375,7 +369,7 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
           <Button variant="ghost" onClick={app.closeBookingDialog}>
             Avbryt
           </Button>
-          <Button type="submit" form={formId} variant="primary" disabled={busy || cannotBook || seriesNotReady}>
+          <Button type="submit" form={formId} variant="primary" disabled={busy || cannotBook || blocking || seriesNotReady}>
             {editing ? <Save className="size-4" /> : isRequest ? <Send className="size-4" /> : <CalendarCheck className="size-4" />}
             {submitLabel}
           </Button>
