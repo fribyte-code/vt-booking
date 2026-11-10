@@ -42,6 +42,8 @@ export interface BookingMove {
 interface BookingCalendarProps {
   calendarRef: Ref<FullCalendar>
   initialView: CalendarViewType
+  /** The day to open on (default today). */
+  initialDate?: Date
   bookings: Booking[]
   rooms: Room[]
   organizations: Organization[]
@@ -61,6 +63,7 @@ const eventTimeFormat = { ...timeFormat, separator: '–' } as const
 export function BookingCalendar({
   calendarRef,
   initialView,
+  initialDate,
   bookings,
   rooms,
   organizations,
@@ -128,6 +131,7 @@ export function BookingCalendar({
       ref={calendarRef}
       plugins={plugins}
       initialView={initialView}
+      initialDate={initialDate}
       locale={nbLocale}
       headerToolbar={false}
       height="100%"

@@ -2,6 +2,7 @@ import type { DatesSetArg } from '@fullcalendar/core'
 import type FullCalendar from '@fullcalendar/react'
 import { CalendarDays, ChevronLeft, ChevronRight, LoaderCircle, Rows3 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { BookingCalendar, type BookingMove, type CalendarViewType } from '../components/calendar/BookingCalendar'
 import { DailyRoomCalendar } from '../components/calendar/DailyRoomCalendar'
 import { MoveBookingDialog, type PendingMove } from '../components/calendar/MoveBookingDialog'
@@ -31,7 +32,13 @@ export function CalendarPage() {
   // The room overview is a second way to look at the same bookings. The ordinary calendar stays
   // mounted underneath it, so it keeps its view and loads the data for whichever day is shown.
   const [mode, setMode] = useState<'calendar' | 'rooms'>('calendar')
-  const [day, setDay] = useState(() => new Date())
+  // A link to a booking (e.g. "Vis i kalenderen" on a public request): ?dato=YYYY-MM-DD&booking=<id>.
+  const [params, setParams] = useSearchParams()
+  const [initialDate] = useState(() => {
+    const d = params.get('dato')
+    return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(`${d}T12:00`) : undefined
+  })
+  const [day, setDay] = useState(() => initialDate ?? new Date())
   const roomsMode = mode === 'rooms'
 
   const api = () => calendarRef.current?.getApi()
@@ -51,6 +58,16 @@ export function CalendarPage() {
     }
     setMode(next)
   }
+
+  // Open the linked booking once it is loaded, then drop the link from the address.
+  const linkedBooking = params.get('booking')
+  const { openBookingDetails } = app
+  const linkedLoaded = !!linkedBooking && app.data.bookings.some((b) => b.id === linkedBooking)
+  useEffect(() => {
+    if (!linkedBooking || !linkedLoaded) return
+    openBookingDetails(linkedBooking)
+    setParams({}, { replace: true })
+  }, [linkedBooking, linkedLoaded, openBookingDetails, setParams])
 
   // A calendar that was hidden has no size; measure it again when it comes back.
   useEffect(() => {
@@ -211,6 +228,7 @@ export function CalendarPage() {
         <BookingCalendar
           calendarRef={calendarRef}
           initialView={view}
+          initialDate={initialDate}
           bookings={bookings}
           rooms={app.data.rooms}
           organizations={app.data.organizations}
