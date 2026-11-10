@@ -1,6 +1,6 @@
 import { crossesMidnight, formatDate, formatTimeRange } from '../lib/dates'
 import type { OpeningHoursEntry, Organization, Room } from '../types'
-import type { PublicRequest, PublicRequestContact } from './adminApi'
+import type { PublicRequest, PublicRequestContact, PublicRequestStatus } from './adminApi'
 
 /** Same as the backend: 07:00 to 05:00 the next day is the longest the closed hours (05:00–07:00) leave. */
 export const PUBLIC_REQUEST_MAX_HOURS = 22
@@ -123,13 +123,43 @@ export function organizationsForRequest(organizations: Organization[]): { option
   return { options, preselected: options.find(isExternalOrganization)?.id ?? '' }
 }
 
-const replyOpening: Record<PublicRequest['status'], string> = {
+export const publicRequestStatusLabels: Record<PublicRequestStatus, string> = {
+  NEW: 'Ubehandlet',
+  IN_PROGRESS: 'Under arbeid',
+  DONE: 'Ferdig',
+  REJECTED: 'Avslått',
+}
+
+export const PUBLIC_REQUEST_STATUSES: PublicRequestStatus[] = ['NEW', 'IN_PROGRESS', 'DONE', 'REJECTED']
+
+/** Not decided yet: a booking can be made from it, or it can be rejected. */
+export const isOpenRequest = (r: Pick<PublicRequest, 'status'>) => r.status === 'NEW' || r.status === 'IN_PROGRESS'
+
+/** Which requests the Forespørsler tab lists, and in what order. */
+export interface PublicRequestFilter {
+  statuses: PublicRequestStatus[]
+  /** Only events that go past midnight. */
+  nightOnly: boolean
+  /** By the event's start (soonest first), or by when it was received (newest first). */
+  sort: 'start' | 'received'
+}
+
+export const DEFAULT_PUBLIC_REQUEST_FILTER: PublicRequestFilter = { statuses: ['NEW', 'IN_PROGRESS'], nightOnly: false, sort: 'start' }
+
+export function filterPublicRequests(requests: PublicRequest[], f: PublicRequestFilter): PublicRequest[] {
+  return requests
+    .filter((r) => (f.statuses.length === 0 || f.statuses.includes(r.status)) && (!f.nightOnly || crossesMidnight(r.start, r.end)))
+    .sort((a, b) => (f.sort === 'start' ? a.start.localeCompare(b.start) : b.createdAt.localeCompare(a.createdAt)))
+}
+
+const replyOpening: Record<PublicRequestStatus, string> = {
   NEW: 'Takk for forespørselen om å låne fellesareal i Studentvillaen.',
-  TRANSFERRED: 'Forespørselen om å låne fellesareal i Studentvillaen er godkjent.',
+  IN_PROGRESS: 'Takk for forespørselen om å låne fellesareal i Studentvillaen.',
+  DONE: 'Forespørselen om å låne fellesareal i Studentvillaen er godkjent.',
   REJECTED: 'Vi har dessverre ikke mulighet til å låne ut fellesareal i Studentvillaen til dette arrangementet.',
 }
 
-/** The booking a transferred request became, as far as the loaded data has it. */
+/** The booking a request became, as far as the loaded data has it. */
 export interface TransferredBooking {
   roomName: string
   start: string
@@ -143,12 +173,12 @@ function formatWhen(start: string, end: string): string {
 /**
  * A `mailto:` link that opens a reply to the applicant with subject and text filled in, worded
  * after the request's status. The admin edits it before sending; nothing is sent automatically.
- * A transferred request shows the room and time actually booked (the admin may have changed
+ * A request with a booking shows the room and time actually booked (the admin may have changed
  * them); if that booking isn't loaded, no room is named and the time is marked as requested.
  */
 export function replyMailto(r: PublicRequest, booking?: TransferredBooking): string {
-  const transferred = r.status === 'TRANSFERRED'
-  const details = transferred
+  const booked = r.status === 'DONE' && !!r.bookingId
+  const details = booked
     ? booking
       ? [`Rom: ${booking.roomName}`, `Tidspunkt: ${formatWhen(booking.start, booking.end)}`]
       : [`Ønsket tidspunkt: ${formatWhen(r.start, r.end)}`]
@@ -171,4 +201,65 @@ export function replyMailto(r: PublicRequest, booking?: TransferredBooking): str
   const subject = `Forespørsel om Studentvillaen: ${r.eventName}`
   // The address is left as is (validated by the server); some mail apps don't decode %40.
   return `mailto:${r.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+}
+
+/**
+ * Where "Send til vektere" sends to. Empty: the admin fills in the address in the mail app.
+ * Put the guard company's address here once it is known.
+ */
+export const GUARDS_EMAIL = ''
+
+/** An event that needs guards, from a public request or a booking. */
+export interface GuardsEvent {
+  title: string
+  organization: string
+  place: string
+  start: string
+  end: string
+  /** One line per responsible person, with phone where known. */
+  contacts: string[]
+}
+
+export const STUDENTVILLAEN = 'Studentvillaen, Christies gate 18'
+
+/** The guards' view of a public request: the room asked for (or booked) in Studentvillaen. */
+export function guardsEventOfRequest(r: PublicRequest, booking?: TransferredBooking): GuardsEvent {
+  const room = booking?.roomName ?? r.preferredRoomName
+  return {
+    title: r.eventName,
+    organization: r.organizationName,
+    place: room ? `${room}, ${STUDENTVILLAEN}` : STUDENTVILLAEN,
+    start: booking?.start ?? r.start,
+    end: booking?.end ?? r.end,
+    contacts: r.contacts.length
+      ? r.contacts.map((c) => `${c.name} (${c.organization}), tlf. ${formatPhone(c.phone)}`)
+      : [`${r.email}`],
+  }
+}
+
+/**
+ * "Send til vektere": a `mailto:` link with a ready-made order for guards, which the admin reads
+ * through and sends from their own mail app. Nothing is sent by the system.
+ */
+export function guardsMailto(e: GuardsEvent, to: string = GUARDS_EMAIL): string {
+  const subject = `Vektere ${formatDate(e.start, { weekday: false })}: ${e.title}`
+  const body = [
+    'Hei,',
+    '',
+    'Vi trenger vektere til et arrangement som går over midnatt.',
+    '',
+    `Arrangement: ${e.title}`,
+    `Arrangør: ${e.organization}`,
+    `Sted: ${e.place}`,
+    `Tid: ${formatWhen(e.start, e.end)}`,
+    '',
+    'Ansvarlige under arrangementet:',
+    ...e.contacts.map((c) => `- ${c}`),
+    '',
+    'Gi gjerne beskjed om dere kan stille, og hvor mange vektere dere setter opp.',
+    '',
+    'Med vennlig hilsen',
+    'Velferdstinget Vest',
+  ].join('\r\n')
+  return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 }

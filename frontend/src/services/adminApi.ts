@@ -85,7 +85,8 @@ export interface OrgInvitation {
   createdAt: string
 }
 
-export type PublicRequestStatus = 'NEW' | 'TRANSFERRED' | 'REJECTED'
+/** Set by the admin: ubehandlet, under arbeid, ferdig, avslått. Creating a booking sets DONE. */
+export type PublicRequestStatus = 'NEW' | 'IN_PROGRESS' | 'DONE' | 'REJECTED'
 
 /** A booking request for Studentvillaen sent from the public form (/soknad). */
 /** A person responsible at the event. `cardNumber` is the UiB card number, not the student number. */
@@ -114,6 +115,22 @@ export interface PublicRequest {
   status: PublicRequestStatus
   createdAt: string
   bookingId: string | null
+  /** The last edit or status change by an admin. */
+  updatedAt: string | null
+  updatedByName: string | null
+}
+
+/** What an admin edits on a request: the form's fields. */
+export interface PublicRequestFields {
+  email: string
+  organizationName: string
+  eventName: string
+  memberOfKulturstyretOrSamfunnet: boolean
+  preferredRoomId: string | null
+  start: string
+  end: string
+  description: string
+  contacts: PublicRequestContact[]
 }
 
 /** ADDED: the person is a member now (`temporaryPassword` when a new account was created). INVITED: they must accept first. */
@@ -159,6 +176,11 @@ export const adminApi = {
 
   publicRequests: () => api.get<PublicRequest[]>('/api/admin/public-requests'),
   rejectPublicRequest: (requestId: string) => api.post<PublicRequest>(`/api/admin/public-requests/${id(requestId)}/reject`),
+  /** At any status; the booking made from it is not changed. */
+  updatePublicRequest: (requestId: string, body: PublicRequestFields) =>
+    api.put<PublicRequest>(`/api/admin/public-requests/${id(requestId)}`, body),
+  setPublicRequestStatus: (requestId: string, status: PublicRequestStatus) =>
+    api.put<PublicRequest>(`/api/admin/public-requests/${id(requestId)}/status`, { status }),
   /** Creates the booking with the normal rules and marks the request as transferred, in one call. */
   createBookingFromRequest: (requestId: string, input: CreateBookingInput) =>
     api.post<{ id: string; status: BookingStatus }>(`/api/admin/public-requests/${id(requestId)}/booking`, input),

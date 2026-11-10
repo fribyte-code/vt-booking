@@ -5,7 +5,10 @@ import {
   bookingDescription,
   contactFieldProblems,
   contactProblem,
+  filterPublicRequests,
   formatPhone,
+  guardsEventOfRequest,
+  guardsMailto,
   listNorwegian,
   missingContactFields,
   organizationsForRequest,
@@ -76,6 +79,8 @@ describe('replyMailto', () => {
     status: 'NEW',
     createdAt: '2030-02-01T10:00:00Z',
     bookingId: null,
+    updatedAt: null,
+    updatedByName: null,
   }
   const parse = (link: string) => {
     const url = new URL(link)
@@ -93,7 +98,7 @@ describe('replyMailto', () => {
   })
 
   it('words the reply after the status', () => {
-    expect(parse(replyMailto({ ...request, status: 'TRANSFERRED' })).body).toContain('er godkjent')
+    expect(parse(replyMailto({ ...request, status: 'DONE' })).body).toContain('er godkjent')
     const rejected = parse(replyMailto({ ...request, status: 'REJECTED' })).body
     expect(rejected).toContain('ikke mulighet')
     expect(rejected).toContain('Ønsket rom: Festplassen')
@@ -101,7 +106,7 @@ describe('replyMailto', () => {
   })
 
   it('names the room actually booked for a transferred request, not the one asked for', () => {
-    const transferred = { ...request, status: 'TRANSFERRED' as const, bookingId: 'b1' }
+    const transferred = { ...request, status: 'DONE' as const, bookingId: 'b1' }
     const booked = parse(
       replyMailto(transferred, { roomName: 'Torgallmenningen', start: '2030-03-01T20:00:00Z', end: '2030-03-01T23:00:00Z' }),
     ).body
@@ -165,5 +170,52 @@ describe('form messages', () => {
     expect(formatPhone('+4791234567')).toBe('+47 912 34 567')
     expect(formatPhone('91234567')).toBe('912 34 567')
     expect(formatPhone('+46701234567')).toBe('+46701234567')
+  })
+})
+
+describe('handling status and guards', () => {
+  const base = {
+    email: 'a@example.no',
+    organizationName: 'Org',
+    eventName: 'Fest',
+    memberOfKulturstyretOrSamfunnet: false,
+    preferredRoomId: null,
+    preferredRoomName: 'Festplassen',
+    description: '',
+    contacts: [{ name: 'Kari', organization: 'Org', cardNumber: '12345678', phone: '+4791234567' }],
+    bookingId: null,
+    updatedAt: null,
+    updatedByName: null,
+  }
+  const req = (id: string, status: PublicRequest['status'], start: string, end: string, createdAt: string): PublicRequest => ({
+    ...base,
+    id,
+    status,
+    start,
+    end,
+    createdAt,
+  })
+  const all = [
+    req('night', 'NEW', '2030-03-02T20:00:00+01:00', '2030-03-03T02:00:00+01:00', '2030-02-01T10:00:00Z'),
+    req('day', 'IN_PROGRESS', '2030-03-01T12:00:00+01:00', '2030-03-01T14:00:00+01:00', '2030-02-03T10:00:00Z'),
+    req('done', 'DONE', '2030-02-20T12:00:00+01:00', '2030-02-20T14:00:00+01:00', '2030-02-02T10:00:00Z'),
+  ]
+
+  it('filters by status and past midnight, sorted by start or by received', () => {
+    const ids = (f: Parameters<typeof filterPublicRequests>[1]) => filterPublicRequests(all, f).map((r) => r.id)
+    expect(ids({ statuses: ['NEW', 'IN_PROGRESS'], nightOnly: false, sort: 'start' })).toEqual(['day', 'night'])
+    expect(ids({ statuses: [], nightOnly: false, sort: 'received' })).toEqual(['day', 'done', 'night'])
+    expect(ids({ statuses: [], nightOnly: true, sort: 'start' })).toEqual(['night'])
+  })
+
+  it('fills in an order for guards with place, time and contacts', () => {
+    const link = guardsMailto(guardsEventOfRequest(all[0]), 'vakt@example.no')
+    const url = new URL(link)
+    const body = url.searchParams.get('body') ?? ''
+    expect(decodeURIComponent(url.pathname)).toBe('vakt@example.no')
+    expect(url.searchParams.get('subject')).toContain('Fest')
+    expect(body).toContain('Sted: Festplassen, Studentvillaen, Christies gate 18')
+    expect(body).toContain('(slutter')
+    expect(body).toContain('- Kari (Org), tlf. +47 912 34 567')
   })
 })
