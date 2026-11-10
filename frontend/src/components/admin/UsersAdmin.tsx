@@ -6,6 +6,7 @@ import { errorMessage } from '../../lib/errors'
 import { type AdminOrganization, type AdminUser, adminApi, type MembershipRole, roleLabels } from '../../services/adminApi'
 import { Button } from '../ui/Button'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { ALL_ORGANIZATIONS, filterUsers, NO_ORGANIZATION } from '../../services/userFilter'
 import { Alert, Field, Input, Select } from '../ui/fields'
 import { Modal } from '../ui/Modal'
 import { Chip } from './Chip'
@@ -28,6 +29,7 @@ export function UsersAdmin() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [shown, setShown] = useState<Shown | null>(null)
   const [query, setQuery] = useState('')
+  const [organizationId, setOrganizationId] = useState(ALL_ORGANIZATIONS)
 
   if (error) return <Alert tone="error">{error}</Alert>
   if (!data) return <p className="text-sm text-slate-500">Laster brukere …</p>
@@ -37,8 +39,8 @@ export function UsersAdmin() {
     reload()
     app.reload()
   }
-  const q = query.trim().toLowerCase()
-  const visible = users.filter((u) => !q || u.displayName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+  const visible = filterUsers(users, organizations, query, organizationId)
+  const organizationOptions = [...organizations].sort((a, b) => a.name.localeCompare(b.name, 'nb'))
   const editing = users.find((u) => u.id === editingId)
 
   return (
@@ -46,11 +48,26 @@ export function UsersAdmin() {
       <div className="flex flex-wrap items-center gap-2">
         <Input
           className="max-w-xs"
-          placeholder="Søk etter navn eller e-post"
+          placeholder="Søk etter navn, e-post eller organisasjon"
           aria-label="Søk etter brukere"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        <Select
+          className="w-auto! max-w-xs"
+          aria-label="Organisasjon"
+          value={organizationId}
+          onChange={(e) => setOrganizationId(e.target.value)}
+        >
+          <option value={ALL_ORGANIZATIONS}>Alle organisasjoner</option>
+          {organizationOptions.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+              {o.status === 'ARCHIVED' ? ' (arkivert)' : ''}
+            </option>
+          ))}
+          <option value={NO_ORGANIZATION}>Uten organisasjon</option>
+        </Select>
         <div className="flex-1" />
         <Button variant="primary" onClick={() => setCreating(true)}>
           <UserPlus className="size-4" /> Ny bruker
