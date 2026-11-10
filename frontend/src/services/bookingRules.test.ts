@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { combineEnd } from '../lib/dates'
 import type { AppData, Booking, OpeningHoursEntry, Room, User } from '../types'
 import {
+  approvalQueue,
   canChangeBooking,
+  canDecide,
   describeOpeningHours,
   evaluateBooking,
   evaluateEdit,
   isExpiredRequest,
   matchesRequestFilter,
   openingHoursProblem,
+  roomManager,
+  VT_MANAGER,
   overlapsClosedHours,
   roomsOnBehalf,
   withinOpeningHours,
@@ -195,7 +199,9 @@ describe('matchesRequestFilter', () => {
     expect(ids(['A', 'B'], ['101', '102'])).toEqual(['A101', 'B102'])
     expect(ids(['C'], ['102'])).toEqual([])
   })
+})
 
+describe('closed hours', () => {
   it('closes every room between 05:00 and 07:00 Norwegian time', () => {
     // Winter time (UTC+1).
     expect(overlapsClosedHours('2030-01-04T20:00+01:00', '2030-01-05T05:00+01:00')).toBe(false)
@@ -210,47 +216,85 @@ describe('matchesRequestFilter', () => {
     const night = { roomId: 'r', organizationId: 'org', title: 'Fest', start: '2030-01-02T01:00+01:00', end: '2030-01-02T06:00+01:00' }
     expect(evaluateBooking(data(), user, night, NOW)).toMatchObject({ ok: false, code: 'RULE_VIOLATION' })
   })
+})
 
-  describe('opening hours', () => {
-    // UiB-kantina: weekdays 16:30–24:00, weekends 08:00–16:00.
-    const canteen: OpeningHoursEntry[] = [
-      ...(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'] as const).map((day) => ({ day, opens: '16:30', closes: '24:00' })),
-      ...(['SATURDAY', 'SUNDAY'] as const).map((day) => ({ day, opens: '08:00', closes: '16:00' })),
+describe('opening hours', () => {
+  // UiB-kantina: weekdays 16:30–24:00, weekends 08:00–16:00.
+  const canteen: OpeningHoursEntry[] = [
+    ...(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'] as const).map((day) => ({ day, opens: '16:30', closes: '24:00' })),
+    ...(['SATURDAY', 'SUNDAY'] as const).map((day) => ({ day, opens: '08:00', closes: '16:00' })),
+  ]
+
+  it('allows only bookings within the start day’s interval, up to 24:00', () => {
+    // Tuesday 1 January 2030 is a Tuesday; Saturday 5 January.
+    expect(withinOpeningHours(canteen, '2030-01-01T16:30+01:00', '2030-01-01T20:00+01:00')).toBe(true)
+    expect(withinOpeningHours(canteen, '2030-01-01T18:00+01:00', '2030-01-02T00:00+01:00')).toBe(true)
+    expect(withinOpeningHours(canteen, '2030-01-01T16:00+01:00', '2030-01-01T18:00+01:00')).toBe(false)
+    expect(withinOpeningHours(canteen, '2030-01-01T20:00+01:00', '2030-01-02T01:00+01:00')).toBe(false)
+    expect(withinOpeningHours(canteen, '2030-01-05T08:00+01:00', '2030-01-05T16:00+01:00')).toBe(true)
+    expect(withinOpeningHours(canteen, '2030-01-05T15:00+01:00', '2030-01-05T17:00+01:00')).toBe(false)
+    expect(withinOpeningHours([{ day: 'SATURDAY', opens: '08:00', closes: '16:00' }], '2030-01-01T10:00+01:00', '2030-01-01T11:00+01:00')).toBe(false)
+    expect(withinOpeningHours([], '2030-01-01T01:00+01:00', '2030-01-01T04:00+01:00')).toBe(true)
+  })
+
+  it('describes the hours like the backend', () => {
+    expect(describeOpeningHours(canteen)).toBe('man–fre 16:30–24:00, lør–søn 08:00–16:00')
+  })
+
+  it('refuses a booking outside the room’s hours with the backend’s message', () => {
+    const tuesday = new Date('2029-12-31T10:00:00Z')
+    const result = evaluateBooking(data([{ ...room, openingHours: canteen }]), user, {
+      roomId: 'r',
+      organizationId: 'org',
+      title: 'Lunsj',
+      start: '2030-01-01T12:00+01:00',
+      end: '2030-01-01T13:00+01:00',
+    }, tuesday)
+    expect(result).toMatchObject({ ok: false, code: 'RULE_VIOLATION', message: 'Møterom er bare åpent man–fre 16:30–24:00, lør–søn 08:00–16:00.' })
+  })
+
+  it('validates hours before saving', () => {
+    expect(openingHoursProblem(canteen)).toBeNull()
+    expect(openingHoursProblem([{ day: 'MONDAY', opens: '18:00', closes: '16:00' }])).toMatch(/starte før/)
+    expect(openingHoursProblem([{ day: 'MONDAY', opens: '8', closes: '16:00' }])).toMatch(/TT:MM/)
+    expect(openingHoursProblem([{ day: 'MONDAY', opens: '08:00', closes: '24:30' }])).toMatch(/TT:MM/)
+  })
+})
+
+describe('room managers', () => {
+  const manager: User = { ...user, organizationIds: ['org'], managedRoomIds: ['r'] }
+  const admin: User = { ...user, role: 'ADMIN', organizationIds: [] }
+  const request = (id: string, roomId: string, extra: Partial<Booking> = {}) =>
+    ({ id, roomId, organizationId: 'other', status: 'PENDING', start: at(24), end: at(25), requiresApproval: true, ...extra }) as Booking
+
+  it('lets system admins and the room’s managers decide, nobody else', () => {
+    expect(canDecide(manager, { roomId: 'r' })).toBe(true)
+    expect(canDecide(manager, { roomId: 'other-room' })).toBe(false)
+    expect(canDecide(user, { roomId: 'r' })).toBe(false)
+    expect(canDecide(admin, { roomId: 'other-room' })).toBe(true)
+  })
+
+  it('queues only the requests the user may decide', () => {
+    const bookings = [
+      request('p1', 'r'),
+      request('p2', 'other-room'),
+      request('done', 'r', { status: 'APPROVED', decidedAt: at(-1) }),
+      request('expired', 'r', { start: at(-48), end: at(-47) }),
     ]
+    const queue = approvalQueue(bookings, manager, NOW.getTime())
+    expect(queue.pending.map((b) => b.id)).toEqual(['p1'])
+    expect(queue.processed.map((b) => b.id)).toEqual(['done'])
+    expect(approvalQueue(bookings, admin, NOW.getTime()).pending.map((b) => b.id)).toEqual(['p1', 'p2'])
+  })
 
-    it('allows only bookings within the start day’s interval, up to 24:00', () => {
-      // Tuesday 1 January 2030 is a Tuesday; Saturday 5 January.
-      expect(withinOpeningHours(canteen, '2030-01-01T16:30+01:00', '2030-01-01T20:00+01:00')).toBe(true)
-      expect(withinOpeningHours(canteen, '2030-01-01T18:00+01:00', '2030-01-02T00:00+01:00')).toBe(true)
-      expect(withinOpeningHours(canteen, '2030-01-01T16:00+01:00', '2030-01-01T18:00+01:00')).toBe(false)
-      expect(withinOpeningHours(canteen, '2030-01-01T20:00+01:00', '2030-01-02T01:00+01:00')).toBe(false)
-      expect(withinOpeningHours(canteen, '2030-01-05T08:00+01:00', '2030-01-05T16:00+01:00')).toBe(true)
-      expect(withinOpeningHours(canteen, '2030-01-05T15:00+01:00', '2030-01-05T17:00+01:00')).toBe(false)
-      expect(withinOpeningHours([{ day: 'SATURDAY', opens: '08:00', closes: '16:00' }], '2030-01-01T10:00+01:00', '2030-01-01T11:00+01:00')).toBe(false)
-      expect(withinOpeningHours([], '2030-01-01T01:00+01:00', '2030-01-01T04:00+01:00')).toBe(true)
-    })
-
-    it('describes the hours like the backend', () => {
-      expect(describeOpeningHours(canteen)).toBe('man–fre 16:30–24:00, lør–søn 08:00–16:00')
-    })
-
-    it('refuses a booking outside the room’s hours with the backend’s message', () => {
-      const tuesday = new Date('2029-12-31T10:00:00Z')
-      const result = evaluateBooking(data([{ ...room, openingHours: canteen }]), user, {
-        roomId: 'r',
-        organizationId: 'org',
-        title: 'Lunsj',
-        start: '2030-01-01T12:00+01:00',
-        end: '2030-01-01T13:00+01:00',
-      }, tuesday)
-      expect(result).toMatchObject({ ok: false, code: 'RULE_VIOLATION', message: 'Møterom er bare åpent man–fre 16:30–24:00, lør–søn 08:00–16:00.' })
-    })
-
-    it('validates hours before saving', () => {
-      expect(openingHoursProblem(canteen)).toBeNull()
-      expect(openingHoursProblem([{ day: 'MONDAY', opens: '18:00', closes: '16:00' }])).toMatch(/starte før/)
-      expect(openingHoursProblem([{ day: 'MONDAY', opens: '8', closes: '16:00' }])).toMatch(/TT:MM/)
-      expect(openingHoursProblem([{ day: 'MONDAY', opens: '08:00', closes: '24:30' }])).toMatch(/TT:MM/)
-    })
+  it('filters by who manages the room, VT for unmanaged rooms', () => {
+    const rooms = [{ ...room, managingOrganizationId: 'samfundet' }, { ...room, id: 'vt-room' }]
+    const managerOf = (roomId: string) => roomManager(rooms, roomId)
+    expect(managerOf('r')).toBe('samfundet')
+    expect(managerOf('vt-room')).toBe(VT_MANAGER)
+    expect(managerOf('archived')).toBe(VT_MANAGER)
+    const f = { organizationIds: [], roomIds: [], managerIds: [VT_MANAGER] }
+    expect(matchesRequestFilter(request('a', 'vt-room'), f, managerOf)).toBe(true)
+    expect(matchesRequestFilter(request('b', 'r'), f, managerOf)).toBe(false)
   })
 })

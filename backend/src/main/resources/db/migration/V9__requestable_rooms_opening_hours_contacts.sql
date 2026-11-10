@@ -1,10 +1,15 @@
--- Rooms that can be asked for in the public form (/soknad), opening hours per room, and contact
--- persons on public requests. The public form now names a room instead of a fixed common area, and
--- no longer asks about a villa guard (every event must have one; the form only says so).
+-- Rooms that can be asked for in the public form (/soknad), opening hours per room, the
+-- organization managing a room, and contact persons on public requests. The public form now names
+-- a room instead of a fixed common area, and no longer asks about a villa guard (every event must
+-- have one; the form only says so).
 
 ALTER TABLE rooms ADD COLUMN public_requestable boolean NOT NULL DEFAULT false;
 -- The two common areas the form offered until now.
 UPDATE rooms SET public_requestable = true WHERE lower(btrim(name)) IN ('festplassen', 'torgallmenningen');
+
+-- The organization managing the room: its ORG_ADMINs see, approve and reject the requests for it,
+-- alongside system admins. Null: system admins only (VT). Only system admins change it.
+ALTER TABLE rooms ADD COLUMN managing_organization_id uuid REFERENCES organizations ON DELETE SET NULL;
 
 -- A room with no rows is open around the clock (apart from the global 05:00–07:00, ClosedHours).
 -- With rows, a booking must lie within its start day's interval; days without a row are closed.

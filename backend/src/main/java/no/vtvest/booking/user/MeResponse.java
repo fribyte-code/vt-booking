@@ -11,7 +11,9 @@ public record MeResponse(
         GlobalRole globalRole,
         /** True after an administrator set a temporary password: every other endpoint returns 403 until it is changed. */
         boolean mustChangePassword,
-        List<MembershipResponse> memberships) {
+        List<MembershipResponse> memberships,
+        /** Rooms whose requests you approve as ORG_ADMIN of the managing organization (not system admin rights). */
+        List<UUID> managedRoomIds) {
 
     public record MembershipResponse(UUID organizationId, String organizationName, MembershipRole role) {}
 }

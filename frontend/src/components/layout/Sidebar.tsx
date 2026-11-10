@@ -1,9 +1,9 @@
-import { CalendarDays, Check, ListChecks, Plus, ShieldCheck, Users } from 'lucide-react'
+import { CalendarDays, Check, ClipboardCheck, ListChecks, Plus, ShieldCheck, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useApp } from '../../hooks/useApp'
 import { cn } from '../../lib/cn'
-import { isExpiredRequest } from '../../services/bookingRules'
+import { approvalQueue, isExpiredRequest } from '../../services/bookingRules'
 import { Button } from '../ui/Button'
 
 function NavItem({ to, icon, label, count, onNavigate }: { to: string; icon: ReactNode; label: string; count?: number; onNavigate?: () => void }) {
@@ -37,6 +37,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   // Booking requests to approve plus new requests from the public form.
   const pendingCount = open.length + (data.newPublicRequests ?? 0)
   const myPendingCount = open.filter((b) => b.requestedById === currentUser.id).length
+  // Room managers who aren't system admins: the requests for their rooms.
+  const managesRooms = currentUser.role !== 'ADMIN' && (currentUser.managedRoomIds?.length ?? 0) > 0
+  const toApprove = managesRooms ? approvalQueue(data.bookings, currentUser).pending.length : 0
   const onCalendar = pathname === '/'
 
   return (
@@ -57,6 +60,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <NavItem to="/mine-bookinger" icon={<ListChecks />} label="Mine bookinger" count={myPendingCount} onNavigate={onNavigate} />
         {currentUser.role === 'ADMIN' && (
           <NavItem to="/admin" icon={<ShieldCheck />} label="Administrasjon" count={pendingCount} onNavigate={onNavigate} />
+        )}
+        {managesRooms && (
+          <NavItem to="/godkjenning" icon={<ClipboardCheck />} label="Til godkjenning" count={toApprove} onNavigate={onNavigate} />
         )}
         {(currentUser.orgAdminOrganizationIds?.length ?? 0) > 0 && (
           <NavItem to="/medlemmer" icon={<Users />} label="Medlemmer" onNavigate={onNavigate} />

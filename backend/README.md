@@ -75,18 +75,18 @@ The CSRF token rotates on login, so call `/api/auth/csrf` again and read a fresh
 | GET | `/api/auth/csrf` | Sets the `XSRF-TOKEN` cookie |
 | POST | `/api/auth/login` | Form fields `email`, `password`. Returns 204, 401 for any failure, or 429 after too many failures. |
 | POST | `/api/auth/logout` | Returns 204 |
-| GET | `/api/me` | Current user, memberships and `mustChangePassword`. Also works while a password change is required. |
+| GET | `/api/me` | Current user, memberships, `mustChangePassword` and `managedRoomIds` (rooms whose requests you decide as ORG_ADMIN of the managing organization). Also works while a password change is required. |
 | POST | `/api/me/password` | `{ currentPassword, newPassword }`. 204. Ends your other sessions; this one stays logged in. |
 | GET | `/api/rooms` | Rooms, each with your effective permission per organization you belong to, and `openingHours` (`[{ day, opens, closes }]`, empty = always open). Administrators get every active organization's permission. |
 | GET | `/api/organizations` | Active organizations: `id` and `name` only |
-| GET | `/api/bookings?from=…&to=…[&roomId=…]` | Bookings overlapping `[from, to)`, max 62 days. Approved bookings are visible to everyone; pending requests only to your own organization and admins. |
+| GET | `/api/bookings?from=…&to=…[&roomId=…]` | Bookings overlapping `[from, to)`, max 62 days. Approved bookings are visible to everyone; pending requests only to your own organization, the room's managers and admins. Each booking has `canDecide`. |
 | GET | `/api/bookings/mine` | Your own bookings and requests, in every status, that ended in the last 90 days or later |
-| GET | `/api/bookings/requests` | Admin only. Pending requests that have not started, plus the 50 most recently decided ones. |
+| GET | `/api/bookings/requests` | System admins (every room) and room managers (their rooms only, selected in the query); 403 for anyone else. Pending requests that have not started, plus the 50 most recently decided ones. |
 | GET | `/api/bookings/{id}` | One booking. Returns 404 if you may not see it. |
 | GET | `/api/bookings/{id}/calendar.ics` | An approved booking as an iCalendar file (`text/calendar`, inline), for "Legg til i kalender" (Apple Calendar has no add-event link). 404 if you may not see it, 409 if not approved. |
 | POST | `/api/bookings` | `{ roomId, organizationId, title, description?, start, end }`. Returns 201 with `APPROVED` (DIRECT) or `PENDING` (REQUEST). |
-| POST | `/api/bookings/{id}/approve` | Admin only. `{ version, comment? }` |
-| POST | `/api/bookings/{id}/reject` | Admin only. `{ version, reason }` |
+| POST | `/api/bookings/{id}/approve` | System admins, and the room's managers (403 for other rooms). `{ version, comment? }`. Records who decided (`decidedByName`). |
+| POST | `/api/bookings/{id}/reject` | As approve. `{ version, reason }` |
 | POST | `/api/bookings/{id}/cancel` | Requester (while still a member), the organization's admins (while it is active), or a global admin. `{ version, reason? }`. Only future `APPROVED`/`PENDING` bookings. |
 | PUT | `/api/bookings/{id}` | Edit. Same people as cancel. `{ version, roomId, title, description?, start, end }`; the organization can't change. A new room or time is checked like a new booking, and the room permission decides the status (see below). |
 | POST | `/api/bookings/series/preview` | Weekly series dry run, same body as below. `{ occurrences: [{ start, end, conflict }] }` |
@@ -95,8 +95,8 @@ The CSRF token rotates on login, so call `/api/auth/csrf` again and read a fresh
 | GET | `/api/bookings/series/{seriesId}/calendar.ics` | The series' approved occurrences that have not ended, one event each. 409 if there are none. |
 | PUT | `/api/bookings/series/{seriesId}` | Edit an occurrence and the following ones. `{ fromBookingId, version, roomId, title, description?, start, end, skipConflicts?, dryRun? }`. 200 `{ updated: [booking], skipped: [{ id, start, end }] }`; a conflict without `skipConflicts` is 409 with `conflicts: [{ id, start, end }]`. |
 | POST | `/api/bookings/series/{seriesId}/cancel` | `{ fromBookingId?, reason? }`. Every future occurrence, or that one and the following. Returns the cancelled ones. |
-| POST | `/api/bookings/series/{seriesId}/approve` | Admin only. `{ comment? }`. 200 `{ approved: [booking], notApproved: [{ id, start, end, code, reason }] }` |
-| POST | `/api/bookings/series/{seriesId}/reject` | Admin only. `{ reason }`. Returns the rejected ones. |
+| POST | `/api/bookings/series/{seriesId}/approve` | System admins, or a manager of every pending occurrence's room. `{ comment? }`. 200 `{ approved: [booking], notApproved: [{ id, start, end, code, reason }] }` |
+| POST | `/api/bookings/series/{seriesId}/reject` | As series approve. `{ reason }`. Returns the rejected ones. |
 | GET | `/api/admin/rooms/{id}/future-bookings`, `/api/admin/organizations/{id}/future-bookings`, `/api/admin/users/{id}/future-bookings` | Admin only. Future `APPROVED`/`PENDING` bookings in the room, of the organization, or requested by the user: what a deactivation may cancel. |
 | GET | `/api/admin/users` | Users with status, last login and memberships |
 | POST | `/api/admin/users` | `{ email, displayName, globalRole, memberships?: [{ organizationId, role }] }`. 201 `{ user, temporaryPassword }`; the password is shown only here. |
@@ -105,7 +105,7 @@ The CSRF token rotates on login, so call `/api/auth/csrf` again and read a fresh
 | PUT, DELETE | `/api/admin/users/{id}/memberships/{organizationId}` | Add or change (`{ role }`), or remove a membership |
 | GET, POST | `/api/admin/organizations` | List (with member counts), or create `{ name }` |
 | PATCH | `/api/admin/organizations/{id}` | Any of `{ name, status, cancelFutureBookings }` |
-| GET, POST | `/api/admin/rooms` | List (with access overrides), or create `{ name, description?, location?, capacity?, color, defaultPermission, publicRequestable?, openingHours? }`. `openingHours`: at most one `{ day: MONDAY…SUNDAY, opens: "HH:MM", closes: "HH:MM" }` per weekday, `closes` up to `"24:00"`. |
+| GET, POST | `/api/admin/rooms` | List (with access overrides), or create `{ name, description?, location?, capacity?, color, defaultPermission, publicRequestable?, openingHours?, managingOrganizationId? }`. `managingOrganizationId`: an active organization whose ORG_ADMINs decide the room's requests, or null for VT (system admins only); always set as sent on update. `openingHours`: at most one `{ day: MONDAY…SUNDAY, opens: "HH:MM", closes: "HH:MM" }` per weekday, `closes` up to `"24:00"`. |
 | PUT | `/api/admin/rooms/{id}` | The same fields, plus `status` and `cancelFutureBookings`. `publicRequestable` or `openingHours` left out (null) are unchanged; `openingHours: []` removes the hours. |
 | DELETE | `/api/admin/rooms/{id}` | Deletes the room with its access overrides. A room with bookings must be `ARCHIVED` first (409 `CONFLICT` otherwise); its bookings, past ones included, are then deleted with it |
 | PUT | `/api/admin/rooms/{id}/access/{organizationId}` | `{ permission }` sets the organization's override; `{ permission: null }` removes it |

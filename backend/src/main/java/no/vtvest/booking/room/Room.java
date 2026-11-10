@@ -39,6 +39,10 @@ public class Room {
     @Column(name = "default_permission", nullable = false)
     private Permission defaultPermission;
 
+    /** Whose ORG_ADMINs approve the room's requests besides system admins; null for system admins only. */
+    @Column(name = "managing_organization_id")
+    private UUID managingOrganizationId;
+
     protected Room() {}
 
     public UUID getId() {
@@ -71,5 +75,9 @@ public class Room {
 
     public Permission getDefaultPermission() {
         return defaultPermission;
+    }
+
+    public UUID getManagingOrganizationId() {
+        return managingOrganizationId;
     }
 }

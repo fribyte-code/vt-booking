@@ -4,7 +4,7 @@ import { useApp } from '../../hooks/useApp'
 import { cn } from '../../lib/cn'
 import { crossesMidnight, formatDate, formatDateTime, formatShortDate, formatTimeRange } from '../../lib/dates'
 import { errorMessage } from '../../lib/errors'
-import { canChangeBooking, findConflicts, isExpiredRequest, isOpenForChanges } from '../../services/bookingRules'
+import { canChangeBooking, canDecide, findConflicts, isExpiredRequest, isOpenForChanges } from '../../services/bookingRules'
 import type { Booking } from '../../types'
 import { Button } from '../ui/Button'
 import { Alert } from '../ui/fields'
@@ -41,11 +41,12 @@ export function BookingDetailsDialog({ bookingId }: { bookingId: string }) {
   const cancellerName =
     (booking.cancelledById ? app.user(booking.cancelledById)?.name : undefined) ?? booking.cancelledByName
   const editorName = (booking.updatedById ? app.user(booking.updatedById)?.name : undefined) ?? booking.updatedByName
-  const isAdmin = app.currentUser.role === 'ADMIN'
+  // System admins and the room's managers (the backend checks this too).
+  const decider = canDecide(app.currentUser, booking)
   const expired = isExpiredRequest(booking)
   // The requester, the organization's administrators and system administrators (the backend checks this too).
   const canChange = canChangeBooking(app.currentUser, booking) && isOpenForChanges(booking)
-  const canDecide = isAdmin && booking.status === 'PENDING' && !expired
+  const mayDecide = decider && booking.status === 'PENDING' && !expired
   const conflicts =
     booking.status === 'PENDING' ? findConflicts(app.data.bookings, booking.roomId, booking.start, booking.end, booking.id) : []
 
@@ -75,7 +76,7 @@ export function BookingDetailsDialog({ bookingId }: { bookingId: string }) {
       leading={<RoomDot color={room.color} className="mt-2" />}
       onClose={app.closeBookingDetails}
       footer={
-        (canChange || canDecide) && (
+        (canChange || mayDecide) && (
           <>
             {canChange && (
               <Button variant="danger" onClick={() => setMode('cancel')} className="mr-auto">
@@ -87,7 +88,7 @@ export function BookingDetailsDialog({ bookingId }: { bookingId: string }) {
                 <Pencil className="size-4" /> Endre
               </Button>
             )}
-            {canDecide && (
+            {mayDecide && (
               <>
                 <Button onClick={() => setMode('reject')}>
                   <X className="size-4" /> Avslå
@@ -144,7 +145,7 @@ export function BookingDetailsDialog({ bookingId }: { bookingId: string }) {
             <SeriesSection
               booking={booking}
               onDecideAll={
-                isAdmin
+                decider
                   ? (decision, count) => {
                       setSeriesOpenCount(count)
                       setMode(decision === 'approve' ? 'approve-series' : 'reject-series')
@@ -182,8 +183,8 @@ export function BookingDetailsDialog({ bookingId }: { bookingId: string }) {
             Søknaden ble ikke behandlet før tidspunktet, og har utløpt.
           </Alert>
         ) : (
-          <Alert tone={conflicts.length && isAdmin ? 'error' : 'info'} className="mt-3">
-            {conflicts.length > 0 && isAdmin
+          <Alert tone={conflicts.length && decider ? 'error' : 'info'} className="mt-3">
+            {conflicts.length > 0 && decider
               ? `Kan ikke godkjennes: rommet er allerede booket (${conflicts.map((c) => `«${c.title}»`).join(', ')}).`
               : 'Søknaden venter på behandling. Tidsrommet er ikke reservert før søknaden er godkjent.'}
           </Alert>

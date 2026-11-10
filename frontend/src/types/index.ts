@@ -28,6 +28,8 @@ export interface User {
   organizationIds: string[]
   /** Signed-in user only: organizations this user administers (ORG_ADMIN). */
   orgAdminOrganizationIds?: string[]
+  /** Signed-in user only: rooms whose requests this user approves as ORG_ADMIN of the managing organization. */
+  managedRoomIds?: string[]
 }
 
 export type Weekday = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY'
@@ -54,6 +56,8 @@ export interface Room {
   permissions: Record<string, Permission>
   /** Empty or missing: open around the clock (apart from 05:00–07:00). */
   openingHours?: OpeningHoursEntry[]
+  /** Its ORG_ADMINs approve the room's requests besides system admins; null or missing: VT (system admins only). */
+  managingOrganizationId?: string | null
 }
 
 export interface Booking {

@@ -11,6 +11,8 @@ public record RoomResponse(
         Integer capacity,
         String color,
         RoomStatus status,
+        /** Its ORG_ADMINs approve the room's requests; null: system admins only (VT). */
+        UUID managingOrganizationId,
         /** The current user's booking right per organization they belong to. */
         List<OrganizationPermission> permissions,
         /** Empty: open around the clock (apart from 05:00–07:00). */
@@ -27,6 +29,7 @@ public record RoomResponse(
                 room.getCapacity(),
                 room.getColor(),
                 room.getStatus(),
+                room.getManagingOrganizationId(),
                 permissions,
                 OpeningHours.toEntries(hours));
     }

@@ -4,6 +4,7 @@ import java.util.Comparator;
 import java.util.List;
 import no.vtvest.booking.organization.MembershipRepository;
 import no.vtvest.booking.organization.OrganizationRepository;
+import no.vtvest.booking.room.RoomManagement;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,10 +13,12 @@ public class UserService {
 
     private final MembershipRepository memberships;
     private final OrganizationRepository organizations;
+    private final RoomManagement roomManagement;
 
-    UserService(MembershipRepository memberships, OrganizationRepository organizations) {
+    UserService(MembershipRepository memberships, OrganizationRepository organizations, RoomManagement roomManagement) {
         this.memberships = memberships;
         this.organizations = organizations;
+        this.roomManagement = roomManagement;
     }
 
     @Transactional(readOnly = true)
@@ -28,6 +31,7 @@ public class UserService {
                 .sorted(Comparator.comparing(MeResponse.MembershipResponse::organizationName))
                 .toList();
         return new MeResponse(
-                actor.getId(), actor.getEmail(), actor.getDisplayName(), actor.getGlobalRole(), actor.isMustChangePassword(), mine);
+                actor.getId(), actor.getEmail(), actor.getDisplayName(), actor.getGlobalRole(), actor.isMustChangePassword(), mine,
+                roomManagement.managedRoomIds(actor.getId()).stream().sorted().toList());
     }
 }

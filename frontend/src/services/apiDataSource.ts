@@ -24,6 +24,7 @@ interface MeResponse {
   globalRole: 'USER' | 'SYSTEM_ADMIN'
   mustChangePassword: boolean
   memberships: { organizationId: string; organizationName: string; role: string }[]
+  managedRoomIds: string[]
 }
 
 interface RoomResponse {
@@ -36,6 +37,7 @@ interface RoomResponse {
   status: 'ACTIVE' | 'DISABLED'
   permissions: { organizationId: string; permission: Permission }[]
   openingHours: OpeningHoursEntry[]
+  managingOrganizationId: string | null
 }
 
 interface BookingResponse {
@@ -87,6 +89,7 @@ function toUser(me: MeResponse): User {
     role: me.globalRole === 'SYSTEM_ADMIN' ? 'ADMIN' : 'USER',
     organizationIds: me.memberships.map((m) => m.organizationId),
     orgAdminOrganizationIds: me.memberships.filter((m) => m.role === 'ORG_ADMIN').map((m) => m.organizationId),
+    managedRoomIds: me.managedRoomIds ?? [],
   }
 }
 
@@ -101,6 +104,7 @@ function toRoom(r: RoomResponse): Room {
     status: r.status,
     permissions: Object.fromEntries(r.permissions.map((p) => [p.organizationId, p.permission])),
     openingHours: r.openingHours ?? [],
+    managingOrganizationId: r.managingOrganizationId ?? null,
   }
 }
 
@@ -205,6 +209,8 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
       sessionMe = null
       userId = me.id
       const isAdmin = me.globalRole === 'SYSTEM_ADMIN'
+      // System admins and room managers get the approval queue (a manager's holds only their rooms).
+      const decides = isAdmin || (me.managedRoomIds ?? []).length > 0
       const { start, end } = clamp(range)
       const query = new URLSearchParams({ from: start, to: end })
 
@@ -213,7 +219,7 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
         api.get<{ id: string; name: string }[]>('/api/organizations'),
         api.get<BookingResponse[]>(`/api/bookings?${query}`),
         api.get<BookingResponse[]>('/api/bookings/mine'),
-        isAdmin ? api.get<BookingResponse[]>('/api/bookings/requests') : Promise.resolve([]),
+        decides ? api.get<BookingResponse[]>('/api/bookings/requests') : Promise.resolve([]),
         api.get<Invitation[]>('/api/me/invitations'),
         isAdmin ? api.get<{ count: number }>('/api/admin/public-requests/count') : Promise.resolve(null),
       ])

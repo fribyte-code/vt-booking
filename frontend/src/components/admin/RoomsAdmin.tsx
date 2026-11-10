@@ -63,6 +63,7 @@ export function RoomsAdmin() {
                   room.location,
                   `Standard: ${permissionLabels[room.defaultPermission]}`,
                   room.openingHours.length > 0 ? `Åpent ${describeOpeningHours(room.openingHours)}` : null,
+                  `Forvaltes av ${room.managingOrganizationId ? (allOrganizations.find((o) => o.id === room.managingOrganizationId)?.name ?? 'ukjent') : 'VT'}`,
                 ]
                   .filter(Boolean)
                   .join(' · ')}
@@ -95,6 +96,7 @@ export function RoomsAdmin() {
         <RoomDialog
           room={editing === 'new' ? null : editing}
           rooms={rooms}
+          organizations={allOrganizations}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)
@@ -128,7 +130,19 @@ function AccessSummary({ room, organizations, onOpen }: { room: AdminRoom; organ
   )
 }
 
-function RoomDialog({ room, rooms, onClose, onSaved }: { room: AdminRoom | null; rooms: AdminRoom[]; onClose: () => void; onSaved: () => void }) {
+function RoomDialog({
+  room,
+  rooms,
+  organizations,
+  onClose,
+  onSaved,
+}: {
+  room: AdminRoom | null
+  rooms: AdminRoom[]
+  organizations: AdminOrganization[]
+  onClose: () => void
+  onSaved: () => void
+}) {
   const id = useId()
   // Archived rooms are no longer shown in the calendar, so their colors count as free.
   const others = rooms.filter((r) => r.id !== room?.id && r.status !== 'ARCHIVED')
@@ -143,6 +157,7 @@ function RoomDialog({ room, rooms, onClose, onSaved }: { room: AdminRoom | null;
         defaultPermission: 'REQUEST',
         publicRequestable: false,
         openingHours: [],
+        managingOrganizationId: null,
       },
   )
   const [error, setError] = useState<string | null>(null)
@@ -302,6 +317,28 @@ function RoomDialog({ room, rooms, onClose, onSaved }: { room: AdminRoom | null;
             </Field>
           )}
         </div>
+        <Field
+          label="Forvaltes av"
+          htmlFor={`${id}-manager`}
+          hint="Organisasjonsadministratorene i organisasjonen ser, godkjenner og avslår søknadene for rommet, i tillegg til systemadministratorer. Bare systemadministratorer endrer rommet og tilgangene."
+        >
+          <Select
+            id={`${id}-manager`}
+            value={fields.managingOrganizationId ?? ''}
+            onChange={(e) => set({ managingOrganizationId: e.target.value || null })}
+          >
+            <option value="">VT (systemadministratorer)</option>
+            {organizations
+              .filter((o) => o.status === 'ACTIVE' || o.id === room?.managingOrganizationId)
+              .sort((a, b) => a.name.localeCompare(b.name, 'nb'))
+              .map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                  {o.status === 'ARCHIVED' ? ' (arkivert)' : ''}
+                </option>
+              ))}
+          </Select>
+        </Field>
         <OpeningHoursEditor value={fields.openingHours} onChange={(openingHours) => set({ openingHours })} />
         <div className="space-y-1">
           <label className="flex items-center gap-2 text-sm font-medium text-slate-700">

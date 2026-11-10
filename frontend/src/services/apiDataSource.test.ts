@@ -108,6 +108,7 @@ describe('API data source', () => {
         role: 'USER',
         organizationIds: ['org-a'],
         orgAdminOrganizationIds: [],
+        managedRoomIds: [],
       },
     ])
     expect(data.rooms[0].permissions).toEqual({ 'org-a': 'DIRECT' })

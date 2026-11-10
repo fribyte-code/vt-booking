@@ -408,20 +408,64 @@ export function evaluateEdit(
   }
 }
 
+/**
+ * Who may approve and reject requests in the booking's room: system admins, and the ORG_ADMINs of
+ * the organization managing the room (`managedRoomIds`). The backend's `Viewer.mayDecide`.
+ */
+export function canDecide(user: User, booking: Pick<Booking, 'roomId'>): boolean {
+  return user.role === 'ADMIN' || (user.managedRoomIds ?? []).includes(booking.roomId)
+}
+
+/**
+ * The approval queue among the loaded bookings, for what the user may decide: pending requests
+ * that have not expired, by start, and decided requests, latest first.
+ */
+export function approvalQueue(
+  bookings: Booking[],
+  user: User,
+  now: number = Date.now(),
+): { pending: Booking[]; processed: Booking[] } {
+  const mine = bookings.filter((b) => canDecide(user, b))
+  return {
+    pending: mine.filter((b) => b.status === 'PENDING' && !isExpiredRequest(b, now)).sort((a, b) => a.start.localeCompare(b.start)),
+    processed: mine
+      .filter((b) => b.requiresApproval && b.decidedAt)
+      .sort((a, b) => (b.decidedAt ?? '').localeCompare(a.decidedAt ?? '')),
+  }
+}
+
+/** The "Forvaltes av" value for rooms managed by VT (system admins only). */
+export const VT_MANAGER = 'vt'
+
+/** Who manages the room's requests: an organization id, or `VT_MANAGER`. Unknown (archived) rooms count as VT. */
+export function roomManager(rooms: Room[], roomId: string): string {
+  return rooms.find((r) => r.id === roomId)?.managingOrganizationId ?? VT_MANAGER
+}
+
 /** Which requests to list. An empty list doesn't limit that category. */
 export interface RequestFilter {
   organizationIds: string[]
   roomIds: string[]
+  /** Organization ids or `VT_MANAGER`: who manages the request's room. */
+  managerIds?: string[]
 }
 
-export const NO_REQUEST_FILTER: RequestFilter = { organizationIds: [], roomIds: [] }
+export const NO_REQUEST_FILTER: RequestFilter = { organizationIds: [], roomIds: [], managerIds: [] }
 
-export const hasRequestFilter = (f: RequestFilter) => f.organizationIds.length + f.roomIds.length > 0
+export const hasRequestFilter = (f: RequestFilter) => f.organizationIds.length + f.roomIds.length + (f.managerIds?.length ?? 0) > 0
 
-/** Any of the chosen organizations AND any of the chosen rooms. */
-export function matchesRequestFilter(b: Pick<Booking, 'organizationId' | 'roomId'>, f: RequestFilter): boolean {
+/**
+ * Any of the chosen organizations AND any of the chosen rooms AND any of the chosen managers
+ * (`managerOf` gives a room's, see `roomManager`).
+ */
+export function matchesRequestFilter(
+  b: Pick<Booking, 'organizationId' | 'roomId'>,
+  f: RequestFilter,
+  managerOf: (roomId: string) => string = () => VT_MANAGER,
+): boolean {
   return (
     (f.organizationIds.length === 0 || f.organizationIds.includes(b.organizationId)) &&
-    (f.roomIds.length === 0 || f.roomIds.includes(b.roomId))
+    (f.roomIds.length === 0 || f.roomIds.includes(b.roomId)) &&
+    (!f.managerIds?.length || f.managerIds.includes(managerOf(b.roomId)))
   )
 }

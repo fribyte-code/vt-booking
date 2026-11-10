@@ -311,6 +311,7 @@ class AdminService {
                 new ArrayList<>(access.getOrDefault(id, List.of())),
                 rs.getInt("booking_count"),
                 rs.getBoolean("public_requestable"),
+                rs.getObject("managing_organization_id", UUID.class),
                 OpeningHours.toEntries(hours.getOrDefault(id, List.of())));
     }
 
@@ -319,11 +320,14 @@ class AdminService {
         String name = body.name().trim();
         requireUniqueRoomName(name, null);
         List<OpeningHours.Interval> hours = OpeningHours.parse(body.openingHours());
+        requireManagingOrganization(body.managingOrganizationId(), null);
         UUID id = jdbc.queryForObject("""
-                INSERT INTO rooms (name, description, location, capacity, color, default_permission, public_requestable)
-                VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id
+                INSERT INTO rooms (name, description, location, capacity, color, default_permission, public_requestable,
+                    managing_organization_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
                 """, UUID.class, name, blankToNull(body.description()), blankToNull(body.location()),
-                body.capacity(), body.color(), body.defaultPermission().name(), Boolean.TRUE.equals(body.publicRequestable()));
+                body.capacity(), body.color(), body.defaultPermission().name(), Boolean.TRUE.equals(body.publicRequestable()),
+                body.managingOrganizationId());
         openingHours.replace(id, hours);
         return room(id);
     }
@@ -335,18 +339,20 @@ class AdminService {
      */
     @Transactional
     AdminRoom updateRoom(User actor, UUID id, RoomFields body) {
-        room(id);
+        AdminRoom current = room(id);
+        requireManagingOrganization(body.managingOrganizationId(), current.managingOrganizationId());
         String name = body.name().trim();
         requireUniqueRoomName(name, id);
         List<OpeningHours.Interval> hours = body.openingHours() == null ? null : OpeningHours.parse(body.openingHours());
         // Updating the row locks it, as booking writes do, so the hours can't change under one.
         jdbc.update("""
                 UPDATE rooms SET name = ?, description = ?, location = ?, capacity = ?, color = ?, default_permission = ?,
-                    status = coalesce(?, status), public_requestable = coalesce(?, public_requestable)
+                    status = coalesce(?, status), public_requestable = coalesce(?, public_requestable),
+                    managing_organization_id = ?
                 WHERE id = ?
                 """, name, blankToNull(body.description()), blankToNull(body.location()), body.capacity(), body.color(),
                 body.defaultPermission().name(), body.status() == null ? null : body.status().name(),
-                body.publicRequestable(), id);
+                body.publicRequestable(), body.managingOrganizationId(), id);
         if (hours != null) {
             openingHours.replace(id, hours);
         }
@@ -388,6 +394,18 @@ class AdminService {
                     """, roomId, organizationId, permission.name());
         }
         return room(roomId);
+    }
+
+    /**
+     * A room can be put under an active organization (or none). One it already has stays allowed
+     * after being archived, so the room can still be saved; its ORG_ADMINs lose the rights then.
+     */
+    private void requireManagingOrganization(UUID organizationId, UUID current) {
+        if (organizationId == null || organizationId.equals(current)) return;
+        if (!Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM organizations WHERE id = ? AND status = 'ACTIVE')", Boolean.class, organizationId))) {
+            throw new ApiException(ErrorCode.VALIDATION, "Rommet kan bare forvaltes av en aktiv organisasjon.");
+        }
     }
 
     private void requireUniqueRoomName(String name, UUID exceptId) {

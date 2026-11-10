@@ -120,6 +120,8 @@ interface RequestFiltersProps {
   onChange: (filter: RequestFilter) => void
   organizations: Option[]
   rooms: Option[]
+  /** Who manages the rooms ("Forvaltes av"): VT and organizations. Left out: no such filter. */
+  managers?: Option[]
   /** Requests that match, and all requests in the list before filtering. */
   shown: number
   total: number
@@ -127,8 +129,18 @@ interface RequestFiltersProps {
   noun?: { one: string; many: string }
 }
 
-/** Filter for the request lists: any chosen organization AND any chosen room. */
-export function RequestFilters({ filter, onChange, organizations, rooms, shown, total, noun = { one: 'søknad', many: 'søknader' } }: RequestFiltersProps) {
+/** Filter for the request lists: any chosen organization AND any chosen room AND any chosen manager. */
+export function RequestFilters({
+  filter,
+  onChange,
+  organizations,
+  rooms,
+  managers,
+  shown,
+  total,
+  noun = { one: 'søknad', many: 'søknader' },
+}: RequestFiltersProps) {
+  const managerIds = filter.managerIds ?? []
   const active = hasRequestFilter(filter)
   const nameOf = (options: Option[], id: string) => options.find((o) => o.id === id)?.name ?? id
 
@@ -150,6 +162,14 @@ export function RequestFilters({ filter, onChange, organizations, rooms, shown, 
           selected={filter.roomIds}
           onChange={(roomIds) => onChange({ ...filter, roomIds })}
         />
+        {managers && managers.length > 1 && (
+          <MultiSelect
+            label="Forvaltes av"
+            options={managers}
+            selected={managerIds}
+            onChange={(ids) => onChange({ ...filter, managerIds: ids })}
+          />
+        )}
         {active && (
           <Button size="sm" variant="ghost" onClick={() => onChange(NO_REQUEST_FILTER)}>
             Nullstill filtre
@@ -177,6 +197,15 @@ export function RequestFilters({ filter, onChange, organizations, rooms, shown, 
               onRemove={() => onChange({ ...filter, roomIds: filter.roomIds.filter((x) => x !== id) })}
             >
               {nameOf(rooms, id)}
+            </ActiveFilter>
+          ))}
+          {managerIds.map((id) => (
+            <ActiveFilter
+              key={`m-${id}`}
+              label={nameOf(managers ?? [], id)}
+              onRemove={() => onChange({ ...filter, managerIds: managerIds.filter((x) => x !== id) })}
+            >
+              Forvaltes av {nameOf(managers ?? [], id)}
             </ActiveFilter>
           ))}
         </div>

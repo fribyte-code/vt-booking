@@ -45,6 +45,8 @@ export interface RoomFields {
   publicRequestable: boolean
   /** At most one per weekday. Empty: open around the clock (apart from 05:00–07:00). */
   openingHours: OpeningHoursEntry[]
+  /** Its ORG_ADMINs see, approve and reject the room's requests; null: VT (system admins only). */
+  managingOrganizationId: string | null
 }
 
 export interface AdminRoom extends RoomFields {

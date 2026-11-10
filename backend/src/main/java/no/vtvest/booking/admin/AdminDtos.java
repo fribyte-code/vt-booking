@@ -90,6 +90,8 @@ final class AdminDtos {
             int bookingCount,
             /** Offered in the public request form (/soknad). */
             boolean publicRequestable,
+            /** Its ORG_ADMINs see, approve and reject the room's requests; null: system admins only (VT). */
+            UUID managingOrganizationId,
             /** Empty: open around the clock (apart from 05:00–07:00). */
             List<OpeningHours.Entry> openingHours) {}
 
@@ -107,7 +109,9 @@ final class AdminDtos {
             /** Offered in the public request form. Null: false on create, unchanged on update. */
             Boolean publicRequestable,
             /** At most one per weekday. Null: none on create, unchanged on update. Empty: always open. */
-            List<OpeningHours.Entry> openingHours) {}
+            List<OpeningHours.Entry> openingHours,
+            /** An active organization whose ORG_ADMINs manage the room's requests, or null for VT (system admins only). Always set as sent. */
+            UUID managingOrganizationId) {}
 
     /** {@code permission: null} removes the override, so the room's default applies. */
     record SetRoomAccess(Permission permission) {}

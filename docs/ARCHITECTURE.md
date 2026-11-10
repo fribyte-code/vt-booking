@@ -56,13 +56,13 @@ Roles: global `USER` or `SYSTEM_ADMIN` on `users`; `MEMBER` or `ORG_ADMIN` per o
 |---|---|
 | Book or request on behalf of an organization | Members of that organization, by the organization's permission for the room |
 | Edit or cancel a booking that has not started | The requester while still a member, an ORG_ADMIN of the booking's active organization, or a SYSTEM_ADMIN |
-| Approve or reject requests | SYSTEM_ADMIN only |
-| Manage users, organizations, rooms, room access | SYSTEM_ADMIN only (`/api/admin/**`) |
+| Approve or reject requests | SYSTEM_ADMINs, and for a room with `managing_organization_id` the ORG_ADMINs of that active organization (room managers). `Viewer.mayDecide` in the backend; the queue query selects only their rooms |
+| Manage users, organizations, rooms, room access, opening hours and room managers | SYSTEM_ADMIN only (`/api/admin/**`) |
 | Manage members of an organization | Its ORG_ADMINs while it is active, and SYSTEM_ADMINs (`/api/organizations/{id}/members`) |
 
 Organization admins can add members (a new email creates an account; an existing one gets an invitation), change roles and remove members. They cannot reset passwords, change anyone's email, status or global role, touch a SYSTEM_ADMIN's membership, or remove or demote the organization's last ORG_ADMIN.
 
-**Visibility.** Every logged-in user sees approved bookings: time, room, title and organization name. Pending requests, descriptions, the people involved, comments and cancellation reasons are only shown to the booking's own organization and to SYSTEM_ADMINs. Bookings someone may not see are reported as not found.
+**Visibility.** Every logged-in user sees approved bookings: time, room, title and organization name. Pending requests, descriptions, the people involved, comments and cancellation reasons are only shown to the booking's own organization, the room's managers and SYSTEM_ADMINs. Bookings someone may not see are reported as not found.
 
 ## 5. Booking rules
 

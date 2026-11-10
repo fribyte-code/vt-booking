@@ -27,6 +27,7 @@ import no.vtvest.booking.room.Permission;
 import no.vtvest.booking.room.OpeningHours;
 import no.vtvest.booking.room.OpeningHoursRepository;
 import no.vtvest.booking.room.Room;
+import no.vtvest.booking.room.RoomManagement;
 import no.vtvest.booking.room.RoomRepository;
 import no.vtvest.booking.room.RoomService;
 import no.vtvest.booking.room.RoomStatus;
@@ -65,6 +66,7 @@ public class BookingService {
     private final Clock clock;
     private final ZoneId zone;
     private final OpeningHoursRepository openingHours;
+    private final RoomManagement roomManagement;
 
     BookingService(
             BookingRepository bookings,
@@ -75,7 +77,8 @@ public class BookingService {
             UserRepository users,
             Clock clock,
             ZoneId zone,
-            OpeningHoursRepository openingHours) {
+            OpeningHoursRepository openingHours,
+            RoomManagement roomManagement) {
         this.bookings = bookings;
         this.rooms = rooms;
         this.roomService = roomService;
@@ -85,6 +88,7 @@ public class BookingService {
         this.clock = clock;
         this.zone = zone;
         this.openingHours = openingHours;
+        this.roomManagement = roomManagement;
     }
 
     @Transactional
@@ -150,9 +154,9 @@ public class BookingService {
      */
     @Transactional
     public BookingResponse update(User actor, UUID id, UpdateBookingRequest request) {
-        Set<UUID> myOrganizationIds = organizationIdsOf(actor);
+        Viewer viewer = viewerOf(actor);
         Booking booking = bookings.findById(id)
-                .filter(b -> isVisible(b, actor, myOrganizationIds))
+                .filter(b -> viewer.sees(b))
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Bookingen finnes ikke."));
         Instant now = clock.instant();
         requireChangeable(actor, booking, request.version(), now, Change.EDIT);
@@ -360,8 +364,10 @@ public class BookingService {
      */
     @Transactional
     public BookingResponse approve(User actor, UUID id, ApproveBookingRequest request) {
-        requireAdmin(actor);
+        Viewer viewer = viewerOf(actor);
+        requireMayDecideAny(viewer);
         Booking booking = findOrNotFound(id);
+        requireMayDecide(viewer, booking);
         requirePending(booking);
         requireVersion(booking, request.version());
         Instant now = clock.instant();
@@ -432,8 +438,10 @@ public class BookingService {
 
     @Transactional
     public BookingResponse reject(User actor, UUID id, RejectBookingRequest request) {
-        requireAdmin(actor);
+        Viewer viewer = viewerOf(actor);
+        requireMayDecideAny(viewer);
         Booking booking = findOrNotFound(id);
+        requireMayDecide(viewer, booking);
         requirePending(booking);
         requireVersion(booking, request.version());
 
@@ -448,9 +456,9 @@ public class BookingService {
      */
     @Transactional
     public BookingResponse cancel(User actor, UUID id, CancelBookingRequest request) {
-        Set<UUID> myOrganizationIds = organizationIdsOf(actor);
+        Viewer viewer = viewerOf(actor);
         Booking booking = bookings.findById(id)
-                .filter(b -> isVisible(b, actor, myOrganizationIds))
+                .filter(b -> viewer.sees(b))
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Bookingen finnes ikke."));
         Instant now = clock.instant();
         requireChangeable(actor, booking, request.version(), now, Change.CANCEL);
@@ -531,6 +539,20 @@ public class BookingService {
                 && organizations.findById(booking.getOrganizationId()).map(Organization::isActive).orElse(false);
     }
 
+    /** System admins and room managers may handle requests; anyone else gets 403 before any lookup. */
+    static void requireMayDecideAny(Viewer viewer) {
+        if (!viewer.mayDecideAny()) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "Bare administratorer og romansvarlige kan behandle søknader.");
+        }
+    }
+
+    /** Approving and rejecting a request in a room: system admins, and the managers of that room. */
+    static void requireMayDecide(Viewer viewer, Booking booking) {
+        if (!viewer.mayDecide(booking.getRoomId())) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "Du kan bare behandle søknader for rom du er romansvarlig for.");
+        }
+    }
+
     static void requireAdmin(User actor) {
         if (!actor.isSystemAdmin()) {
             throw new ApiException(ErrorCode.FORBIDDEN, "Bare administratorer kan behandle søknader.");
@@ -586,13 +608,13 @@ public class BookingService {
                 ? bookings.findInRange(CALENDAR_STATUSES, from, to)
                 : bookings.findInRangeForRoom(roomId, CALENDAR_STATUSES, from, to);
 
-        Set<UUID> myOrganizationIds = organizationIdsOf(actor);
+        Viewer viewer = viewerOf(actor);
         Instant now = clock.instant();
         List<Booking> visible = found.stream()
                 .filter(b -> !isExpiredRequest(b, now))
-                .filter(b -> isVisible(b, actor, myOrganizationIds))
+                .filter(b -> viewer.sees(b))
                 .toList();
-        return toResponses(visible, actor, myOrganizationIds);
+        return toResponses(visible, viewer);
     }
 
     /** The actor's own bookings and requests, in every status, from the last 90 days onwards. */
@@ -600,32 +622,42 @@ public class BookingService {
     public List<BookingResponse> mine(User actor) {
         Instant since = clock.instant().minus(MY_HISTORY);
         List<Booking> found = bookings.findByRequestedByIdAndEndAtAfterOrderByStartAt(actor.getId(), since);
-        return toResponses(found, actor, organizationIdsOf(actor));
+        return toResponses(found, viewerOf(actor));
     }
 
     /**
-     * Admin queue: pending requests that have not started, plus the 50 most recently decided ones.
+     * The approval queue: pending requests that have not started, plus the 50 most recently decided
+     * ones. System admins get every room's; room managers only their rooms', selected in the query.
      * A request whose start has passed can no longer be approved, so it has expired: it stays
      * PENDING in the database, but leaves the queue and the calendar. "My bookings" still shows it.
      */
     @Transactional(readOnly = true)
     public List<BookingResponse> requests(User actor) {
-        requireAdmin(actor);
-        List<Booking> found = Stream.concat(
-                        bookings.findByStatusAndStartAtAfterOrderByStartAt(BookingStatus.PENDING, clock.instant()).stream(),
-                        bookings.findTop50ByRequiresApprovalTrueAndDecidedAtNotNullOrderByDecidedAtDesc().stream())
-                .toList();
-        return toResponses(found, actor, Set.of());
+        Viewer viewer = viewerOf(actor);
+        requireMayDecideAny(viewer);
+        Instant now = clock.instant();
+        Stream<Booking> pending;
+        Stream<Booking> decided;
+        if (viewer.isSystemAdmin()) {
+            pending = bookings.findByStatusAndStartAtAfterOrderByStartAt(BookingStatus.PENDING, now).stream();
+            decided = bookings.findTop50ByRequiresApprovalTrueAndDecidedAtNotNullOrderByDecidedAtDesc().stream();
+        } else {
+            pending = bookings.findByStatusAndRoomIdInAndStartAtAfterOrderByStartAt(
+                    BookingStatus.PENDING, viewer.managedRoomIds(), now).stream();
+            decided = bookings.findTop50ByRoomIdInAndRequiresApprovalTrueAndDecidedAtNotNullOrderByDecidedAtDesc(
+                    viewer.managedRoomIds()).stream();
+        }
+        return toResponses(Stream.concat(pending, decided).toList(), viewer);
     }
 
     /** Bookings the actor may not see are reported as not found, so their existence is not leaked. */
     @Transactional(readOnly = true)
     public BookingResponse get(User actor, UUID id) {
-        Set<UUID> myOrganizationIds = organizationIdsOf(actor);
+        Viewer viewer = viewerOf(actor);
         Booking booking = bookings.findById(id)
-                .filter(b -> isVisible(b, actor, myOrganizationIds))
+                .filter(b -> viewer.sees(b))
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Bookingen finnes ikke."));
-        return toResponses(List.of(booking), actor, myOrganizationIds).getFirst();
+        return toResponses(List.of(booking), viewer).getFirst();
     }
 
     // ── Future bookings of deactivated rooms, organizations and users ──
@@ -643,7 +675,7 @@ public class BookingService {
             case ORGANIZATION -> bookings.findFutureForOrganization(id, CALENDAR_STATUSES, now);
             case REQUESTER -> bookings.findFutureByRequester(id, CALENDAR_STATUSES, now);
         };
-        return toResponses(found, actor, Set.of());
+        return toResponses(found, viewerOf(actor));
     }
 
     /**
@@ -684,30 +716,25 @@ public class BookingService {
         return booking.getStatus() == BookingStatus.PENDING && !booking.getStartAt().isAfter(now);
     }
 
-    /** Everyone sees approved bookings; other statuses only for the own organization and admins. */
-    static boolean isVisible(Booking booking, User actor, Set<UUID> myOrganizationIds) {
-        return booking.getStatus() == BookingStatus.APPROVED
-                || actor.isSystemAdmin()
-                || myOrganizationIds.contains(booking.getOrganizationId());
-    }
-
-    Set<UUID> organizationIdsOf(User actor) {
-        return memberships.findByIdUserId(actor.getId()).stream()
+    /** The actor's organizations and managed rooms, read from the database for this request. */
+    Viewer viewerOf(User actor) {
+        Set<UUID> organizationIds = memberships.findByIdUserId(actor.getId()).stream()
                 .map(Membership::getId)
                 .map(MembershipId::organizationId)
                 .collect(Collectors.toSet());
+        return new Viewer(actor, organizationIds, roomManagement.managedRoomIds(actor.getId()));
     }
 
     BookingResponse toResponse(Booking booking, User actor) {
-        return toResponses(List.of(booking), actor, organizationIdsOf(actor)).getFirst();
+        return toResponses(List.of(booking), viewerOf(actor)).getFirst();
     }
 
     /**
      * Maps bookings to responses, loading room, organization and user names in three queries.
      * Description, comments and the people involved are only included for the booking's own
-     * organization and administrators.
+     * organization, the room's managers and system admins.
      */
-    List<BookingResponse> toResponses(List<Booking> found, User actor, Set<UUID> myOrganizationIds) {
+    List<BookingResponse> toResponses(List<Booking> found, Viewer viewer) {
         Map<UUID, Organization> orgById = organizations
                 .findAllById(found.stream().map(Booking::getOrganizationId).distinct().toList())
                 .stream()
@@ -720,7 +747,7 @@ public class BookingService {
 
         Set<UUID> userIds = new HashSet<>();
         for (Booking b : found) {
-            if (actor.isSystemAdmin() || myOrganizationIds.contains(b.getOrganizationId())) {
+            if (viewer.seesDetails(b)) {
                 userIds.add(b.getRequestedById());
                 if (b.getDecidedById() != null) {
                     userIds.add(b.getDecidedById());
@@ -738,7 +765,7 @@ public class BookingService {
 
         return found.stream()
                 .map(b -> {
-                    boolean own = actor.isSystemAdmin() || myOrganizationIds.contains(b.getOrganizationId());
+                    boolean own = viewer.seesDetails(b);
                     Organization organization = orgById.get(b.getOrganizationId());
                     return new BookingResponse(
                             b.getId(),
@@ -754,7 +781,8 @@ public class BookingService {
                             b.getEndAt(),
                             b.getStatus(),
                             b.isRequiresApproval(),
-                            own,
+                            viewer.ownOrganization(b),
+                            viewer.mayDecide(b.getRoomId()),
                             b.getCreatedAt(),
                             b.getDecidedAt(),
                             own && b.getDecidedById() != null ? nameById.get(b.getDecidedById()) : null,

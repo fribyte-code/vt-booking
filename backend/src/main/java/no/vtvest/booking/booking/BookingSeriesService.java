@@ -105,14 +105,14 @@ public class BookingSeriesService {
                 .toList();
         bookingService.insert(created, room);
         return new SeriesCreated(
-                seriesId, bookingService.toResponses(created, actor, bookingService.organizationIdsOf(actor)), conflicts);
+                seriesId, bookingService.toResponses(created, bookingService.viewerOf(actor)), conflicts);
     }
 
     /** The occurrences the actor may see, by start. A series without any is reported as not found. */
     @Transactional(readOnly = true)
     public List<BookingResponse> get(User actor, UUID seriesId) {
-        Set<UUID> myOrganizationIds = bookingService.organizationIdsOf(actor);
-        return bookingService.toResponses(visibleOccurrences(actor, seriesId, myOrganizationIds), actor, myOrganizationIds);
+        Viewer viewer = bookingService.viewerOf(actor);
+        return bookingService.toResponses(visibleOccurrences(seriesId, viewer), viewer);
     }
 
     /**
@@ -123,8 +123,8 @@ public class BookingSeriesService {
     @Transactional
     public List<BookingResponse> cancel(User actor, UUID seriesId, SeriesCancelRequest request) {
         List<Booking> series = lockSeries(seriesId);
-        Set<UUID> myOrganizationIds = bookingService.organizationIdsOf(actor);
-        List<Booking> all = visible(series, actor, myOrganizationIds);
+        Viewer viewer = bookingService.viewerOf(actor);
+        List<Booking> all = visible(series, viewer);
         Instant from = request.fromBookingId() == null
                 ? Instant.MIN
                 : anchor(all, request.fromBookingId()).getStartAt();
@@ -141,7 +141,7 @@ public class BookingSeriesService {
         String reason = BookingService.blankToNull(request.reason());
         targets.forEach(b -> b.cancel(actor.getId(), now, reason));
         bookingService.flush(null);
-        return bookingService.toResponses(targets, actor, myOrganizationIds);
+        return bookingService.toResponses(targets, viewer);
     }
 
     /**
@@ -168,8 +168,8 @@ public class BookingSeriesService {
         List<Booking> series = lockSeries(seriesId);
         requireRoomsLocked(series, locked);
 
-        Set<UUID> myOrganizationIds = bookingService.organizationIdsOf(actor);
-        Booking anchor = anchor(visible(series, actor, myOrganizationIds), request.fromBookingId());
+        Viewer viewer = bookingService.viewerOf(actor);
+        Booking anchor = anchor(visible(series, viewer), request.fromBookingId());
         Instant now = clock.instant();
         bookingService.requireChangeable(actor, anchor, request.version(), now, BookingService.Change.EDIT);
         List<Booking> targets = series.stream()
@@ -240,23 +240,25 @@ public class BookingSeriesService {
         List<OccurrenceSlot> skippedSlots = skipped.stream()
                 .map(b -> new OccurrenceSlot(b.getId(), plan.get(b).start(), plan.get(b).end()))
                 .toList();
-        return new SeriesUpdated(bookingService.toResponses(updated, actor, myOrganizationIds), skippedSlots);
+        return new SeriesUpdated(bookingService.toResponses(updated, viewer), skippedSlots);
     }
 
     /**
-     * System admin only: approves every unexpired pending occurrence, re-checking everything a
+     * System admins and the rooms' managers: approves every unexpired pending occurrence, re-checking everything a
      * single approval checks. The requester's membership and account apply to the whole series and
      * fail the request; permission and conflicts are per occurrence (occurrences may have been
      * moved to other rooms), and those that fail are returned in {@code notApproved}.
      */
     @Transactional
     public SeriesApproved approve(User actor, UUID seriesId, SeriesApproveRequest request) {
-        BookingService.requireAdmin(actor);
+        Viewer viewer = bookingService.viewerOf(actor);
+        BookingService.requireMayDecideAny(viewer);
         // Rooms first, then the bookings by id: the same order as every other write.
         Map<UUID, Room> lockedRooms = bookingService.lockRooms(seriesKeys(seriesId).roomIds());
         List<Booking> series = lockSeries(seriesId);
         requireRoomsLocked(series, lockedRooms);
         List<Booking> targets = pendingOccurrences(series);
+        targets.forEach(b -> BookingService.requireMayDecide(viewer, b));
         bookingService.requireRequesterMayStillBook(targets.getFirst());
 
         Instant now = clock.instant();
@@ -275,19 +277,21 @@ public class BookingSeriesService {
             bookingService.flush(room);
             approved.add(b);
         }
-        return new SeriesApproved(bookingService.toResponses(approved, actor, Set.of()), notApproved);
+        return new SeriesApproved(bookingService.toResponses(approved, viewer), notApproved);
     }
 
-    /** System admin only: rejects every unexpired pending occurrence. Returns the rejected ones. */
+    /** System admins and the rooms' managers: rejects every unexpired pending occurrence. Returns the rejected ones. */
     @Transactional
     public List<BookingResponse> reject(User actor, UUID seriesId, SeriesRejectRequest request) {
-        BookingService.requireAdmin(actor);
+        Viewer viewer = bookingService.viewerOf(actor);
+        BookingService.requireMayDecideAny(viewer);
         List<Booking> targets = pendingOccurrences(lockSeries(seriesId));
+        targets.forEach(b -> BookingService.requireMayDecide(viewer, b));
         Instant now = clock.instant();
         String reason = request.reason().strip();
         targets.forEach(b -> b.reject(actor.getId(), now, reason));
         bookingService.flush(null);
-        return bookingService.toResponses(targets, actor, Set.of());
+        return bookingService.toResponses(targets, viewer);
     }
 
     /** The occurrence of the series that an operation starts from. */
@@ -335,14 +339,14 @@ public class BookingSeriesService {
         return a.start().isBefore(b.end()) && a.end().isAfter(b.start());
     }
 
-    private List<Booking> visibleOccurrences(User actor, UUID seriesId, Set<UUID> myOrganizationIds) {
-        return visible(bookings.findBySeriesIdOrderByStartAt(seriesId), actor, myOrganizationIds);
+    private List<Booking> visibleOccurrences(UUID seriesId, Viewer viewer) {
+        return visible(bookings.findBySeriesIdOrderByStartAt(seriesId), viewer);
     }
 
     /** The occurrences the actor may see, by start; a series without any is not found. */
-    private static List<Booking> visible(List<Booking> series, User actor, Set<UUID> myOrganizationIds) {
+    private static List<Booking> visible(List<Booking> series, Viewer viewer) {
         List<Booking> visible = series.stream()
-                .filter(b -> BookingService.isVisible(b, actor, myOrganizationIds))
+                .filter(viewer::sees)
                 .sorted(Comparator.comparing(Booking::getStartAt))
                 .toList();
         if (visible.isEmpty()) {

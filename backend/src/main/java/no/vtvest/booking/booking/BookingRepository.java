@@ -124,4 +124,11 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
      */
     @Query("select b.roomId, b.organizationId, b.requestedById from Booking b where b.seriesId = :seriesId")
     List<Object[]> seriesKeys(UUID seriesId);
+
+    /** A room manager's queue: pending requests in their rooms. */
+    List<Booking> findByStatusAndRoomIdInAndStartAtAfterOrderByStartAt(
+            BookingStatus status, java.util.Collection<UUID> roomIds, Instant after);
+
+    List<Booking> findTop50ByRoomIdInAndRequiresApprovalTrueAndDecidedAtNotNullOrderByDecidedAtDesc(
+            java.util.Collection<UUID> roomIds);
 }
