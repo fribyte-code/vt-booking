@@ -97,6 +97,17 @@ export interface PublicRequestContact {
   phone: string
 }
 
+/** The booking made from a request, read live: the truth for its time and room. */
+export interface LinkedBooking {
+  id: string
+  roomId: string
+  roomName: string
+  title: string
+  start: string
+  end: string
+  status: BookingStatus
+}
+
 export interface PublicRequest {
   id: string
   email: string
@@ -115,6 +126,10 @@ export interface PublicRequest {
   status: PublicRequestStatus
   createdAt: string
   bookingId: string | null
+  /** The linked booking, or null. Its time and room are the ones that count. */
+  booking: LinkedBooking | null
+  /** When the linked booking was cancelled or deleted (the request went back to "Under arbeid"). */
+  bookingRemovedAt: string | null
   /** The last edit or status change by an admin. */
   updatedAt: string | null
   updatedByName: string | null
@@ -176,11 +191,12 @@ export const adminApi = {
 
   publicRequests: () => api.get<PublicRequest[]>('/api/admin/public-requests'),
   rejectPublicRequest: (requestId: string) => api.post<PublicRequest>(`/api/admin/public-requests/${id(requestId)}/reject`),
-  /** At any status; the booking made from it is not changed. */
+  /** At any status. A linked booking is moved and its text regenerated in the same call, or nothing is saved. */
   updatePublicRequest: (requestId: string, body: PublicRequestFields) =>
     api.put<PublicRequest>(`/api/admin/public-requests/${id(requestId)}`, body),
-  setPublicRequestStatus: (requestId: string, status: PublicRequestStatus) =>
-    api.put<PublicRequest>(`/api/admin/public-requests/${id(requestId)}/status`, { status }),
+  /** `cancelBooking` with REJECTED also cancels the request's booking. */
+  setPublicRequestStatus: (requestId: string, status: PublicRequestStatus, cancelBooking = false) =>
+    api.put<PublicRequest>(`/api/admin/public-requests/${id(requestId)}/status`, { status, cancelBooking }),
   /** Creates the booking with the normal rules and marks the request as transferred, in one call. */
   createBookingFromRequest: (requestId: string, input: CreateBookingInput) =>
     api.post<{ id: string; status: BookingStatus }>(`/api/admin/public-requests/${id(requestId)}/booking`, input),

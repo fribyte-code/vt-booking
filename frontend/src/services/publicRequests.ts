@@ -1,4 +1,4 @@
-import { crossesMidnight, formatDate, formatTimeRange } from '../lib/dates'
+import { crossesMidnight, formatDate, formatTimeRange, toDateInput } from '../lib/dates'
 import type { OpeningHoursEntry, Organization, Room } from '../types'
 import type { PublicRequest, PublicRequestContact, PublicRequestStatus } from './adminApi'
 
@@ -18,6 +18,21 @@ export interface PublicRoom {
 /** The room asked for, among the rooms the admin can book; none for no preference or a deleted room. */
 export function requestedRoom(rooms: Room[], r: Pick<PublicRequest, 'preferredRoomId'>): Room | undefined {
   return r.preferredRoomId ? rooms.find((room) => room.id === r.preferredRoomId) : undefined
+}
+
+/**
+ * The time and room that count for a request: its booking's, read live, when it has one (the
+ * booking is the truth, also after a move in the calendar), otherwise the ones asked for.
+ */
+export function requestWhen(r: Pick<PublicRequest, 'start' | 'end' | 'preferredRoomName' | 'booking'>): {
+  start: string
+  end: string
+  roomName: string | null
+  booked: boolean
+} {
+  return r.booking
+    ? { start: r.booking.start, end: r.booking.end, roomName: r.booking.roomName, booked: true }
+    : { start: r.start, end: r.end, roomName: r.preferredRoomName, booked: false }
 }
 
 /** A contact person on one line, as in the booking description and replies. */
@@ -130,6 +145,19 @@ export const publicRequestStatusLabels: Record<PublicRequestStatus, string> = {
   REJECTED: 'Avslått',
 }
 
+/** The chip tone of each status in the admin's list and details. */
+export const publicRequestStatusTones: Record<PublicRequestStatus, 'dark' | 'amber' | 'default' | 'red'> = {
+  NEW: 'dark',
+  IN_PROGRESS: 'amber',
+  DONE: 'default',
+  REJECTED: 'red',
+}
+
+/** The calendar on a booking's day with the booking opened (read by CalendarPage). */
+export function bookingCalendarLink(b: { id: string; start: string }): string {
+  return `/?dato=${toDateInput(new Date(b.start))}&booking=${encodeURIComponent(b.id)}`
+}
+
 export const PUBLIC_REQUEST_STATUSES: PublicRequestStatus[] = ['NEW', 'IN_PROGRESS', 'DONE', 'REJECTED']
 
 /** Not decided yet: a booking can be made from it, or it can be rejected. */
@@ -146,10 +174,17 @@ export interface PublicRequestFilter {
 
 export const DEFAULT_PUBLIC_REQUEST_FILTER: PublicRequestFilter = { statuses: ['NEW', 'IN_PROGRESS'], nightOnly: false, sort: 'start' }
 
+/** By the time that counts ({@link requestWhen}): the booking's when there is one. */
 export function filterPublicRequests(requests: PublicRequest[], f: PublicRequestFilter): PublicRequest[] {
+  const night = (r: PublicRequest) => {
+    const { start, end } = requestWhen(r)
+    return crossesMidnight(start, end)
+  }
   return requests
-    .filter((r) => (f.statuses.length === 0 || f.statuses.includes(r.status)) && (!f.nightOnly || crossesMidnight(r.start, r.end)))
-    .sort((a, b) => (f.sort === 'start' ? a.start.localeCompare(b.start) : b.createdAt.localeCompare(a.createdAt)))
+    .filter((r) => (f.statuses.length === 0 || f.statuses.includes(r.status)) && (!f.nightOnly || night(r)))
+    .sort((a, b) =>
+      f.sort === 'start' ? requestWhen(a).start.localeCompare(requestWhen(b).start) : b.createdAt.localeCompare(a.createdAt),
+    )
 }
 
 const replyOpening: Record<PublicRequestStatus, string> = {
@@ -159,13 +194,6 @@ const replyOpening: Record<PublicRequestStatus, string> = {
   REJECTED: 'Vi har dessverre ikke mulighet til å låne ut fellesareal i Studentvillaen til dette arrangementet.',
 }
 
-/** The booking a request became, as far as the loaded data has it. */
-export interface TransferredBooking {
-  roomName: string
-  start: string
-  end: string
-}
-
 function formatWhen(start: string, end: string): string {
   return `${formatDate(start)}, ${formatTimeRange(start, end)}${crossesMidnight(start, end) ? ` (slutter ${formatDate(end)})` : ''}`
 }
@@ -173,16 +201,13 @@ function formatWhen(start: string, end: string): string {
 /**
  * A `mailto:` link that opens a reply to the applicant with subject and text filled in, worded
  * after the request's status. The admin edits it before sending; nothing is sent automatically.
- * A request with a booking shows the room and time actually booked (the admin may have changed
- * them); if that booking isn't loaded, no room is named and the time is marked as requested.
+ * A request with a booking (not rejected) names the room and time actually booked.
  */
-export function replyMailto(r: PublicRequest, booking?: TransferredBooking): string {
-  const booked = r.status === 'DONE' && !!r.bookingId
-  const details = booked
-    ? booking
-      ? [`Rom: ${booking.roomName}`, `Tidspunkt: ${formatWhen(booking.start, booking.end)}`]
-      : [`Ønsket tidspunkt: ${formatWhen(r.start, r.end)}`]
-    : [`Tidspunkt: ${formatWhen(r.start, r.end)}`, `Ønsket rom: ${r.preferredRoomName ?? 'Ingen preferanse'}`]
+export function replyMailto(r: PublicRequest): string {
+  const details =
+    r.booking && r.status !== 'REJECTED'
+      ? [`Rom: ${r.booking.roomName}`, `Tidspunkt: ${formatWhen(r.booking.start, r.booking.end)}`]
+      : [`Tidspunkt: ${formatWhen(r.start, r.end)}`, `Ønsket rom: ${r.preferredRoomName ?? 'Ingen preferanse'}`]
   const body = [
     'Hei,',
     '',
@@ -222,15 +247,15 @@ export interface GuardsEvent {
 
 export const STUDENTVILLAEN = 'Studentvillaen, Christies gate 18'
 
-/** The guards' view of a public request: the room asked for (or booked) in Studentvillaen. */
-export function guardsEventOfRequest(r: PublicRequest, booking?: TransferredBooking): GuardsEvent {
-  const room = booking?.roomName ?? r.preferredRoomName
+/** The guards' view of a public request: the room booked (or asked for) in Studentvillaen. */
+export function guardsEventOfRequest(r: PublicRequest): GuardsEvent {
+  const { start, end, roomName } = requestWhen(r)
   return {
     title: r.eventName,
     organization: r.organizationName,
-    place: room ? `${room}, ${STUDENTVILLAEN}` : STUDENTVILLAEN,
-    start: booking?.start ?? r.start,
-    end: booking?.end ?? r.end,
+    place: roomName ? `${roomName}, ${STUDENTVILLAEN}` : STUDENTVILLAEN,
+    start,
+    end,
     contacts: r.contacts.length
       ? r.contacts.map((c) => `${c.name} (${c.organization}), tlf. ${formatPhone(c.phone)}`)
       : [`${r.email}`],

@@ -13,6 +13,7 @@ import {
   missingContactFields,
   organizationsForRequest,
   replyMailto,
+  requestWhen,
   requestedRoom,
 } from './publicRequests'
 
@@ -79,6 +80,8 @@ describe('replyMailto', () => {
     status: 'NEW',
     createdAt: '2030-02-01T10:00:00Z',
     bookingId: null,
+    booking: null,
+    bookingRemovedAt: null,
     updatedAt: null,
     updatedByName: null,
   }
@@ -105,19 +108,32 @@ describe('replyMailto', () => {
     expect(rejected).not.toContain('villavakt')
   })
 
-  it('names the room actually booked for a transferred request, not the one asked for', () => {
-    const transferred = { ...request, status: 'DONE' as const, bookingId: 'b1' }
-    const booked = parse(
-      replyMailto(transferred, { roomName: 'Torgallmenningen', start: '2030-03-01T20:00:00Z', end: '2030-03-01T23:00:00Z' }),
-    ).body
+  it('names the room and time of the booking, which counts over what was asked for', () => {
+    const transferred: PublicRequest = {
+      ...request,
+      status: 'DONE',
+      bookingId: 'b1',
+      booking: {
+        id: 'b1',
+        roomId: '3',
+        roomName: 'Torgallmenningen',
+        title: 'Konsert',
+        start: '2030-03-01T20:00:00Z',
+        end: '2030-03-01T23:00:00Z',
+        status: 'APPROVED',
+      },
+    }
+    const booked = parse(replyMailto(transferred)).body
     expect(booked).toContain('Rom: Torgallmenningen')
     expect(booked).not.toContain('Festplassen')
     expect(booked).not.toContain('Ønsket')
-
-    // Without the booking at hand, no room is named, and the time is the one asked for.
-    const unknown = parse(replyMailto(transferred)).body
-    expect(unknown).not.toMatch(/Rom:|Festplassen|Torgallmenningen/)
-    expect(unknown).toContain('Ønsket tidspunkt:')
+    expect(requestWhen(transferred)).toEqual({
+      start: '2030-03-01T20:00:00Z',
+      end: '2030-03-01T23:00:00Z',
+      roomName: 'Torgallmenningen',
+      booked: true,
+    })
+    expect(requestWhen(request)).toMatchObject({ start: request.start, roomName: 'Festplassen', booked: false })
   })
 })
 
@@ -184,6 +200,8 @@ describe('handling status and guards', () => {
     description: '',
     contacts: [{ name: 'Kari', organization: 'Org', cardNumber: '12345678', phone: '+4791234567' }],
     bookingId: null,
+    booking: null,
+    bookingRemovedAt: null,
     updatedAt: null,
     updatedByName: null,
   }
@@ -200,6 +218,25 @@ describe('handling status and guards', () => {
     req('day', 'IN_PROGRESS', '2030-03-01T12:00:00+01:00', '2030-03-01T14:00:00+01:00', '2030-02-03T10:00:00Z'),
     req('done', 'DONE', '2030-02-20T12:00:00+01:00', '2030-02-20T14:00:00+01:00', '2030-02-02T10:00:00Z'),
   ]
+
+  it('filters and sorts by the booked time when there is a booking', () => {
+    // Asked for the afternoon, booked over midnight in the calendar.
+    const moved: PublicRequest = {
+      ...all[2],
+      booking: {
+        id: 'b',
+        roomId: 'x',
+        roomName: 'Torgallmenningen',
+        title: 'Fest',
+        start: '2030-03-04T22:00:00+01:00',
+        end: '2030-03-05T01:00:00+01:00',
+        status: 'APPROVED',
+      },
+    }
+    const ids = (f: Parameters<typeof filterPublicRequests>[1]) => filterPublicRequests([...all.slice(0, 2), moved], f).map((r) => r.id)
+    expect(ids({ statuses: [], nightOnly: true, sort: 'start' })).toEqual(['night', 'done'])
+    expect(ids({ statuses: [], nightOnly: false, sort: 'start' })).toEqual(['day', 'night', 'done'])
+  })
 
   it('filters by status and past midnight, sorted by start or by received', () => {
     const ids = (f: Parameters<typeof filterPublicRequests>[1]) => filterPublicRequests(all, f).map((r) => r.id)
