@@ -38,17 +38,18 @@ import {
   formatPhone,
   type GuardsEvent,
   guardsEventOfRequest,
-  guardsMailto,
+  guardsEmail,
   isOpenRequest,
   MAX_CONTACTS,
   PUBLIC_REQUEST_STATUSES,
   publicRequestStatusLabels,
   publicRequestStatusTones,
-  replyMailto,
+  replyEmail,
   requestedRoom,
   requestWhen,
 } from '../../services/publicRequests'
 import { NightBadge } from '../booking/badges'
+import { EmailButton } from '../email/EmailDialog'
 import { ContactFields } from '../publicRequest/ContactFields'
 import { Button } from '../ui/Button'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
@@ -56,15 +57,12 @@ import { Alert, Field, Input, Select, Textarea } from '../ui/fields'
 import { Modal } from '../ui/Modal'
 import { Chip } from './Chip'
 
-/** A link styled as a small secondary button: "Send til vektere" opens the mail app. */
-const linkButton =
-  'inline-flex h-8 items-center gap-1.5 rounded-lg bg-white px-3 text-sm font-medium text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50'
-
+/** "Send til vektere": a ready-made order in the shared email dialog. */
 export function GuardsLink({ event }: { event: GuardsEvent }) {
   return (
-    <a href={guardsMailto(event)} className={linkButton} title="Åpner en ferdig utfylt bestilling i e-postprogrammet">
+    <EmailButton title="Send til vektere" draft={() => guardsEmail(event)}>
       <ShieldAlert className="size-4" /> Send til vektere
-    </a>
+    </EmailButton>
   )
 }
 
@@ -300,9 +298,12 @@ export function PublicRequestDetails({
           </p>
         </Row>
         <Row icon={<Mail />}>
-          <a href={replyMailto(r)} className="text-blue-700 hover:underline" title="Åpner et ferdig utfylt svar i e-postprogrammet">
-            {r.email}
-          </a>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="break-all text-slate-900">{r.email}</span>
+            <EmailButton title={`Svar til ${r.email}`} draft={() => replyEmail(r)}>
+              <Mail className="size-4" /> Svar på e-post
+            </EmailButton>
+          </div>
         </Row>
         {r.contacts.length > 0 && (
           <Row icon={<Users />}>

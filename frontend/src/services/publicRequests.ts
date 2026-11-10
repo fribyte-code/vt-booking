@@ -1,6 +1,7 @@
 import { crossesMidnight, formatDate, formatTimeRange, toDateInput } from '../lib/dates'
 import type { OpeningHoursEntry, Organization, Room } from '../types'
 import type { PublicRequest, PublicRequestContact, PublicRequestStatus } from './adminApi'
+import type { EmailDraft } from './email'
 
 export const MAX_CONTACTS = 10
 
@@ -209,11 +210,11 @@ function formatWhen(start: string, end: string): string {
 }
 
 /**
- * A `mailto:` link that opens a reply to the applicant with subject and text filled in, worded
- * after the request's status. The admin edits it before sending; nothing is sent automatically.
- * A request with a booking (not rejected) names the room and time actually booked.
+ * A reply to the applicant, worded after the request's status, which the admin reads through and
+ * sends from their own mail app (`EmailDialog`). A request with a booking (not rejected) names
+ * the room and time actually booked.
  */
-export function replyMailto(r: PublicRequest): string {
+export function replyEmail(r: PublicRequest): EmailDraft {
   const details =
     r.booking && r.status !== 'REJECTED'
       ? [`Rom: ${r.booking.roomName}`, `Tidspunkt: ${formatWhen(r.booking.start, r.booking.end)}`]
@@ -232,17 +233,9 @@ export function replyMailto(r: PublicRequest): string {
     '',
     'Med vennlig hilsen',
     'Velferdstinget Vest',
-  ].join('\r\n')
-  const subject = `Forespørsel om Studentvillaen: ${r.eventName}`
-  // The address is left as is (validated by the server); some mail apps don't decode %40.
-  return `mailto:${r.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  ].join('\n')
+  return { to: r.email, subject: `Forespørsel om Studentvillaen: ${r.eventName}`, body }
 }
-
-/**
- * Where "Send til vektere" sends to. Empty: the admin fills in the address in the mail app.
- * Put the guard company's address here once it is known.
- */
-export const GUARDS_EMAIL = ''
 
 /** An event that needs guards, from a public request or a booking. */
 export interface GuardsEvent {
@@ -273,10 +266,10 @@ export function guardsEventOfRequest(r: PublicRequest): GuardsEvent {
 }
 
 /**
- * "Send til vektere": a `mailto:` link with a ready-made order for guards, which the admin reads
- * through and sends from their own mail app. Nothing is sent by the system.
+ * "Send til vektere": a ready-made order for guards. There is no fixed address: the admin copies
+ * the text, or opens it in the mail app, and fills in the recipient.
  */
-export function guardsMailto(e: GuardsEvent, to: string = GUARDS_EMAIL): string {
+export function guardsEmail(e: GuardsEvent): EmailDraft {
   const subject = `Vektere ${formatDate(e.start, { weekday: false })}: ${e.title}`
   const body = [
     'Hei,',
@@ -295,6 +288,6 @@ export function guardsMailto(e: GuardsEvent, to: string = GUARDS_EMAIL): string 
     '',
     'Med vennlig hilsen',
     'Velferdstinget Vest',
-  ].join('\r\n')
-  return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  ].join('\n')
+  return { to: '', subject, body }
 }

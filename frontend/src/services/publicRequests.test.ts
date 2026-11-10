@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Organization, Room } from '../types'
 import type { PublicRequest } from './adminApi'
+import { emailText, mailtoOf } from './email'
 import {
   bookingDescription,
   contactFieldProblems,
@@ -8,11 +9,11 @@ import {
   filterPublicRequests,
   formatPhone,
   guardsEventOfRequest,
-  guardsMailto,
+  guardsEmail,
   listNorwegian,
   missingContactFields,
   organizationsForRequest,
-  replyMailto,
+  replyEmail,
   requestWhen,
   requestedRoom,
 } from './publicRequests'
@@ -66,7 +67,7 @@ describe('organizationsForRequest', () => {
   })
 })
 
-describe('replyMailto', () => {
+describe('replyEmail', () => {
   const request: PublicRequest = {
     id: 'r1',
     email: 'leder@example.no',
@@ -93,7 +94,7 @@ describe('replyMailto', () => {
   }
 
   it('fills in the recipient, subject and the request in the text, safely encoded', () => {
-    const { to, subject, body } = parse(replyMailto(request))
+    const { to, subject, body } = parse(mailtoOf(replyEmail(request)))
     expect(to).toBe('leder@example.no')
     expect(subject).toBe('Forespørsel om Studentvillaen: Høstkonsert & fest')
     expect(body).toContain('Takk for forespørselen')
@@ -102,9 +103,16 @@ describe('replyMailto', () => {
     expect(body).toContain('må ha villavakt')
   })
 
+  it('is addressed to the applicant, and copies as subject then text', () => {
+    const draft = replyEmail(request)
+    expect(draft.to).toBe('leder@example.no')
+    expect(emailText(draft)).toMatch(/^Emne: Forespørsel om Studentvillaen: Høstkonsert & fest\n\nHei,\n/)
+    expect(guardsEmail(guardsEventOfRequest(request)).to).toBe('')
+  })
+
   it('words the reply after the status', () => {
-    expect(parse(replyMailto({ ...request, status: 'DONE' })).body).toContain('er godkjent')
-    const rejected = parse(replyMailto({ ...request, status: 'REJECTED' })).body
+    expect(parse(mailtoOf(replyEmail({ ...request, status: 'DONE' }))).body).toContain('er godkjent')
+    const rejected = parse(mailtoOf(replyEmail({ ...request, status: 'REJECTED' }))).body
     expect(rejected).toContain('ikke mulighet')
     expect(rejected).toContain('Ønsket rom: Festplassen')
     expect(rejected).not.toContain('villavakt')
@@ -125,7 +133,7 @@ describe('replyMailto', () => {
         status: 'APPROVED',
       },
     }
-    const booked = parse(replyMailto(transferred)).body
+    const booked = parse(mailtoOf(replyEmail(transferred))).body
     expect(booked).toContain('Rom: Torgallmenningen')
     expect(booked).not.toContain('Festplassen')
     expect(booked).not.toContain('Ønsket')
@@ -250,7 +258,7 @@ describe('handling status and guards', () => {
   })
 
   it('fills in an order for guards with place, time and contacts', () => {
-    const link = guardsMailto(guardsEventOfRequest(all[0]), 'vakt@example.no')
+    const link = mailtoOf({ ...guardsEmail(guardsEventOfRequest(all[0])), to: 'vakt@example.no' })
     const url = new URL(link)
     const body = url.searchParams.get('body') ?? ''
     expect(decodeURIComponent(url.pathname)).toBe('vakt@example.no')
