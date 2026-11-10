@@ -30,6 +30,8 @@ class PublicRequestService {
 
     /** Generous on purpose: the admin adjusts the time when making the booking, where the booking rules apply. */
     static final Duration MAX_DURATION = Duration.ofHours(24);
+    /** As far ahead as a booking can be made (BookingService.MAX_ADVANCE). */
+    static final Duration MAX_ADVANCE = Duration.ofDays(180);
 
     private final JdbcTemplate jdbc;
     private final BookingService bookingService;
@@ -54,6 +56,9 @@ class PublicRequestService {
         if (!start.isAfter(clock.instant())) {
             throw new ApiException(ErrorCode.VALIDATION, "Tidspunktet har allerede vært.");
         }
+        if (start.isAfter(clock.instant().plus(MAX_ADVANCE))) {
+            throw new ApiException(ErrorCode.VALIDATION, "Du kan søke om lån inntil 180 dager frem i tid.");
+        }
         jdbc.update("""
                 INSERT INTO public_requests (email, organization_name, event_name, member_of_kulturstyret_or_samfunnet,
                     preferred_area, start_at, end_at, description, needs_villa_guard, created_at)
@@ -76,6 +81,14 @@ class PublicRequestService {
     List<PublicRequest> list(User actor) {
         requireSystemAdmin(actor);
         return jdbc.query("SELECT * FROM public_requests ORDER BY created_at DESC", PublicRequestService::toRequest);
+    }
+
+    /** How many requests are not handled yet (NEW), for the admin's badge. */
+    @Transactional(readOnly = true)
+    long countNew(User actor) {
+        requireSystemAdmin(actor);
+        Long count = jdbc.queryForObject("SELECT count(*) FROM public_requests WHERE status = 'NEW'", Long.class);
+        return count == null ? 0 : count;
     }
 
     @Transactional

@@ -76,6 +76,37 @@ class PublicRequestIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    void requestsAtMost180DaysAhead() throws Exception {
+        submitAnonymously(requestJson(at(179, 18), at(179, 20))).andExpect(status().isNoContent());
+        submitAnonymously(requestJson(at(181, 18), at(181, 20)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION"));
+        // Beyond what PostgreSQL can store: refused before it gets there (it used to give 500).
+        Instant farFuture = Instant.parse("+300000-01-01T18:00:00Z");
+        submitAnonymously(requestJson(farFuture, farFuture.plusSeconds(7200)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM public_requests", Integer.class)).isOne();
+    }
+
+    @Test
+    void theCountIsTheUnhandledRequestsForSystemAdminsOnly() throws Exception {
+        call(get("/api/admin/public-requests/count"), ADMIN, null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.count").value(0));
+        UUID rejected = submit(at(7, 18), at(7, 20));
+        submit(at(8, 18), at(8, 20));
+        submit(at(9, 18), at(9, 20));
+        call(post("/api/admin/public-requests/" + rejected + "/reject"), ADMIN, null).andExpect(status().isOk());
+
+        call(get("/api/admin/public-requests/count"), ADMIN, null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.count").value(2));
+        mvc.perform(get("/api/admin/public-requests/count")).andExpect(status().isUnauthorized());
+        call(get("/api/admin/public-requests/count"), KARI, null).andExpect(status().isForbidden());
+    }
+
+    @Test
     void onlySystemAdminsCanReadAndHandleRequests() throws Exception {
         UUID id = submit(at(7, 18), at(7, 20));
 

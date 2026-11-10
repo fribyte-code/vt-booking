@@ -63,6 +63,8 @@ export function createApiClient(
 
   async function toError(res: Response): Promise<BookingError> {
     if (res.status === 401) return new BookingError('UNAUTHENTICATED', 'Du må logge inn.')
+    // Nginx's rate limits (seconds) and the API's login throttle (15 minutes) both answer 429.
+    if (res.status === 429) return new BookingError('FORBIDDEN', 'For mange forsøk. Prøv igjen senere.')
 
     let code: string | undefined
     let detail: string | undefined
@@ -148,9 +150,6 @@ export function createApiClient(
         body: new URLSearchParams({ email, password }).toString(),
       })
       if (res.status === 401) throw new BookingError('UNAUTHENTICATED', 'Feil e-post eller passord.')
-      if (res.status === 429) {
-        throw new BookingError('FORBIDDEN', 'For mange mislykkede forsøk. Vent et kvarter og prøv igjen.')
-      }
       if (!res.ok) throw await toError(res)
     },
 

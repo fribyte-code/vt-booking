@@ -212,7 +212,7 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
         api.get<BookingResponse[]>('/api/bookings/mine'),
         isAdmin ? api.get<BookingResponse[]>('/api/bookings/requests') : Promise.resolve([]),
         api.get<Invitation[]>('/api/me/invitations'),
-        isAdmin ? api.get<{ status: string }[]>('/api/admin/public-requests') : Promise.resolve(null),
+        isAdmin ? api.get<{ count: number }>('/api/admin/public-requests/count') : Promise.resolve(null),
       ])
 
       const seenUntil = readSeen(me.id)
@@ -241,7 +241,7 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
         rooms: rooms.map(toRoom),
         bookings: [...bookings.values()],
         invitations,
-        newPublicRequests: publicRequests?.filter((r) => r.status === 'NEW').length,
+        newPublicRequests: publicRequests?.count,
       } satisfies AppData
     },
 

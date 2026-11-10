@@ -1,6 +1,7 @@
-# Builds the backend and frontend images on every push to main or dev and publishes them to the
-# GitHub Container Registry, tagged with the commit SHA and `latest` (main) or `dev` (dev). The
-# server pulls them with `make prod-pull` (see docs/DEPLOYMENT.md).
+# On every push to main: runs the backend and frontend tests and the linter, and only if they pass,
+# builds the backend and frontend images and publishes them to the GitHub Container Registry,
+# tagged with the commit SHA and `latest`. The server pulls them with `make prod-pull` (see
+# docs/DEPLOYMENT.md).
 name: Docker images
 
 on:
@@ -10,15 +11,52 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: images-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Integration tests run PostgreSQL with Testcontainers, on the runner's Docker.
+      - name: Backend tests
+        working-directory: backend
+        run: ./mvnw -B -q test
+
+      - name: Frontend install
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: npm test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     strategy:
       matrix:
         service: [backend, frontend]
@@ -39,7 +77,6 @@ jobs:
           images: ghcr.io/${{ github.repository }}-${{ matrix.service }}
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
             type=sha,format=long,prefix=
 
       - uses: docker/build-push-action@v6
