@@ -1,20 +1,31 @@
 import { describe, expect, it } from 'vitest'
 import type { Organization, Room } from '../types'
 import type { PublicRequest } from './adminApi'
-import { organizationsForRequest, replyMailto, roomForArea } from './publicRequests'
+import { bookingDescription, contactProblem, organizationsForRequest, replyMailto, requestedRoom } from './publicRequests'
 
 const room = (id: string, name: string) => ({ id, name }) as Room
 const rooms = [room('1', 'Studentvillaen – kjeller'), room('2', ' festplassen '), room('3', 'Torgallmenningen')]
 
-describe('roomForArea', () => {
-  it('finds the room named after the area, ignoring case and spaces', () => {
-    expect(roomForArea(rooms, 'FESTPLASSEN')?.id).toBe('2')
-    expect(roomForArea(rooms, 'TORGALLMENNINGEN')?.id).toBe('3')
+describe('requestedRoom', () => {
+  it('finds the room asked for by id, and none without a preference or when it is gone', () => {
+    expect(requestedRoom(rooms, { preferredRoomId: '2' })?.name).toBe(' festplassen ')
+    expect(requestedRoom(rooms, { preferredRoomId: null })).toBeUndefined()
+    expect(requestedRoom(rooms, { preferredRoomId: 'slettet' })).toBeUndefined()
+  })
+})
+
+describe('contactProblem', () => {
+  const contact = { name: 'Kari', organization: 'Jazzklubben', cardNumber: '1234 5678', phone: '+47 912 34 567' }
+
+  it('accepts a complete contact, ignoring spaces and hyphens', () => {
+    expect(contactProblem(contact)).toBeNull()
+    expect(contactProblem({ ...contact, phone: '912-34-567' })).toBeNull()
   })
 
-  it('picks no room without a preference or a matching room', () => {
-    expect(roomForArea(rooms, 'NO_PREFERENCE')).toBeUndefined()
-    expect(roomForArea([room('1', 'Studentvillaen')], 'FESTPLASSEN')).toBeUndefined()
+  it('refuses missing fields, a student number and a short phone number', () => {
+    expect(contactProblem({ ...contact, name: ' ' })).toMatch(/Fyll ut/)
+    expect(contactProblem({ ...contact, cardNumber: 's123456' })).toMatch(/ikke studentnummeret/)
+    expect(contactProblem({ ...contact, phone: '112' })).toMatch(/Telefonnummeret/)
   })
 })
 
@@ -46,11 +57,12 @@ describe('replyMailto', () => {
     organizationName: 'Jazzklubben',
     eventName: 'Høstkonsert & fest',
     memberOfKulturstyretOrSamfunnet: false,
-    preferredArea: 'FESTPLASSEN',
+    preferredRoomId: '2',
+    preferredRoomName: 'Festplassen',
     start: '2030-03-01T19:00:00Z',
     end: '2030-03-02T01:00:00Z',
     description: 'Konsert',
-    needsVillaGuard: true,
+    contacts: [{ name: 'Kari', organization: 'Jazzklubben', cardNumber: '12345678', phone: '91234567' }],
     status: 'NEW',
     createdAt: '2030-02-01T10:00:00Z',
     bookingId: null,
@@ -66,15 +78,16 @@ describe('replyMailto', () => {
     expect(subject).toBe('Forespørsel om Studentvillaen: Høstkonsert & fest')
     expect(body).toContain('Takk for forespørselen')
     expect(body).toContain('Arrangement: Høstkonsert & fest')
-    expect(body).toContain('Ønsket fellesareal: Festplassen')
-    expect(body).toContain('Behov for villavakt: Ja')
+    expect(body).toContain('Ønsket rom: Festplassen')
+    expect(body).toContain('må ha villavakt')
   })
 
   it('words the reply after the status', () => {
     expect(parse(replyMailto({ ...request, status: 'TRANSFERRED' })).body).toContain('er godkjent')
     const rejected = parse(replyMailto({ ...request, status: 'REJECTED' })).body
     expect(rejected).toContain('ikke mulighet')
-    expect(rejected).toContain('Ønsket fellesareal: Festplassen')
+    expect(rejected).toContain('Ønsket rom: Festplassen')
+    expect(rejected).not.toContain('villavakt')
   })
 
   it('names the room actually booked for a transferred request, not the one asked for', () => {
@@ -90,5 +103,22 @@ describe('replyMailto', () => {
     const unknown = parse(replyMailto(transferred)).body
     expect(unknown).not.toMatch(/Rom:|Festplassen|Torgallmenningen/)
     expect(unknown).toContain('Ønsket tidspunkt:')
+  })
+})
+
+describe('bookingDescription', () => {
+  const request = {
+    email: 'leder@example.no',
+    memberOfKulturstyretOrSamfunnet: true,
+    preferredRoomName: null,
+    description: 'x'.repeat(600),
+    contacts: Array.from({ length: 3 }, (_, i) => ({ name: `Person ${i}`, organization: 'Org', cardNumber: '12345678', phone: '91234567' })),
+  } as unknown as PublicRequest
+
+  it('keeps the facts and contacts, and stays within 500 characters', () => {
+    const text = bookingDescription(request)
+    expect(text.length).toBeLessThanOrEqual(500)
+    expect(text).toContain('Ønsket rom: Ingen preferanse')
+    expect(text).toContain('- Person 2 (Org), kortnr. 12345678, tlf. 91234567')
   })
 })

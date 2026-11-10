@@ -3,7 +3,7 @@ import { useCallback, useId, useState } from 'react'
 import { useApp } from '../../hooks/useApp'
 import { sameColor, suggestColor } from '../../lib/color'
 import { errorMessage } from '../../lib/errors'
-import { permissionLabels } from '../../services/bookingRules'
+import { describeOpeningHours, openingHoursProblem, permissionLabels } from '../../services/bookingRules'
 import { type AdminOrganization, type AdminRoom, adminApi, type RoomFields, type RoomStatus, roomStatusLabels } from '../../services/adminApi'
 import type { Permission } from '../../types'
 import { PermissionBadge, RoomDot } from '../booking/badges'
@@ -14,6 +14,7 @@ import { Modal } from '../ui/Modal'
 import { Chip } from './Chip'
 import { ColorPicker } from './ColorPicker'
 import { FutureBookingsDialog } from './FutureBookingsDialog'
+import { OpeningHoursEditor } from './OpeningHoursEditor'
 import { RoomAccessDialog } from './RoomAccessDialog'
 import { useAdminData } from './useAdminData'
 
@@ -54,9 +55,15 @@ export function RoomsAdmin() {
               <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
                 {room.name}
                 {room.status !== 'ACTIVE' && <Chip label={roomStatusLabels[room.status]} tone="amber" />}
+                {room.publicRequestable && <Chip label="I søknadsskjemaet" />}
               </p>
               <p className="text-xs text-slate-500">
-                {[room.capacity ? `${room.capacity} plasser` : null, room.location, `Standard: ${permissionLabels[room.defaultPermission]}`]
+                {[
+                  room.capacity ? `${room.capacity} plasser` : null,
+                  room.location,
+                  `Standard: ${permissionLabels[room.defaultPermission]}`,
+                  room.openingHours.length > 0 ? `Åpent ${describeOpeningHours(room.openingHours)}` : null,
+                ]
                   .filter(Boolean)
                   .join(' · ')}
               </p>
@@ -134,6 +141,8 @@ function RoomDialog({ room, rooms, onClose, onSaved }: { room: AdminRoom | null;
         capacity: null,
         color: suggestColor(others.map((r) => r.color)),
         defaultPermission: 'REQUEST',
+        publicRequestable: false,
+        openingHours: [],
       },
   )
   const [error, setError] = useState<string | null>(null)
@@ -146,7 +155,13 @@ function RoomDialog({ room, rooms, onClose, onSaved }: { room: AdminRoom | null;
   // Closing or archiving the room: the administrator decides what happens to its future bookings first.
   const closing = !!room && fields.status !== room.status && (fields.status === 'DISABLED' || fields.status === 'ARCHIVED')
 
+  const hoursProblem = openingHoursProblem(fields.openingHours)
+
   const save = async () => {
+    if (hoursProblem) {
+      setError(hoursProblem)
+      return
+    }
     if (closing) {
       setConfirmClosing(true)
       return
@@ -286,6 +301,17 @@ function RoomDialog({ room, rooms, onClose, onSaved }: { room: AdminRoom | null;
               </Select>
             </Field>
           )}
+        </div>
+        <OpeningHoursEditor value={fields.openingHours} onChange={(openingHours) => set({ openingHours })} />
+        <div className="space-y-1">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input type="checkbox" checked={fields.publicRequestable} onChange={(e) => set({ publicRequestable: e.target.checked })} />
+            Kan forespørres fra søknadsskjemaet
+          </label>
+          <p className="text-xs text-slate-500">
+            Rommet vises i det offentlige skjemaet på /soknad, med navn, kapasitet, beskrivelse og åpningstider. Beskrivelsen
+            vises der, så skriv den for søkerne (f.eks. hvem som prioriteres).
+          </p>
         </div>
         {error && <Alert tone="error">{error}</Alert>}
       </div>

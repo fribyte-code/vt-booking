@@ -19,16 +19,19 @@ public class RoomService {
     private final RoomAccessRepository roomAccess;
     private final MembershipRepository memberships;
     private final OrganizationRepository organizations;
+    private final OpeningHoursRepository openingHours;
 
     RoomService(
             RoomRepository rooms,
             RoomAccessRepository roomAccess,
             MembershipRepository memberships,
-            OrganizationRepository organizations) {
+            OrganizationRepository organizations,
+            OpeningHoursRepository openingHours) {
         this.rooms = rooms;
         this.roomAccess = roomAccess;
         this.memberships = memberships;
         this.organizations = organizations;
+        this.openingHours = openingHours;
     }
 
     /**
@@ -57,13 +60,14 @@ public class RoomService {
                 .findByIdOrganizationIdIn(myOrganizations.stream().map(Organization::getId).toList())
                 .stream()
                 .collect(Collectors.toMap(RoomAccess::getId, RoomAccess::getPermission));
+        Map<java.util.UUID, List<OpeningHours.Interval>> hours = openingHours.all();
 
         return rooms.findByStatusNotOrderByName(RoomStatus.ARCHIVED).stream()
                 .map(room -> RoomResponse.from(room, myOrganizations.stream()
                         .map(org -> new RoomResponse.OrganizationPermission(
                                 org.getId(),
                                 resolve(room, org, overrides.get(new RoomAccessId(room.getId(), org.getId())))))
-                        .toList()))
+                        .toList(), hours.getOrDefault(room.getId(), List.of())))
                 .toList();
     }
 

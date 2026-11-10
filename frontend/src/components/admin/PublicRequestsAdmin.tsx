@@ -5,7 +5,7 @@ import { cn } from '../../lib/cn'
 import { crossesMidnight, formatDate, formatDateTime, formatTimeRange } from '../../lib/dates'
 import { errorMessage } from '../../lib/errors'
 import { adminApi, type PublicRequest } from '../../services/adminApi'
-import { preferredAreaLabel, replyMailto, roomForArea } from '../../services/publicRequests'
+import { bookingDescription, replyMailto, requestedRoom } from '../../services/publicRequests'
 import { EmptyState } from '../booking/BookingListItem'
 import { NightBadge } from '../booking/badges'
 import { Button } from '../ui/Button'
@@ -19,17 +19,6 @@ const statusLabels = {
   TRANSFERRED: 'Overført',
   REJECTED: 'Avslått',
 } as const
-
-/** The booking's description, prefilled from the request (bookings allow 500 characters). */
-function bookingDescription(r: PublicRequest): string {
-  const facts = [
-    `Kontakt: ${r.email}`,
-    `Ønsket fellesareal: ${preferredAreaLabel(r.preferredArea)}`,
-    `Medlem av Kulturstyret eller Studentersamfunnet: ${r.memberOfKulturstyretOrSamfunnet ? 'Ja' : 'Nei'}`,
-    `Behov for villavakt: ${r.needsVillaGuard ? 'Ja' : 'Nei'}`,
-  ].join('\n')
-  return `${r.description.slice(0, 500 - facts.length - 2)}\n\n${facts}`
-}
 
 /**
  * System administrators: requests for Studentvillaen from the public form (/soknad). "Opprett
@@ -54,8 +43,8 @@ export function PublicRequestsAdmin() {
     app.openBookingDialog({
       start: r.start,
       end: r.end,
-      // No room for "Ingen preferanse" or an area missing from the system: the admin picks one.
-      roomId: roomForArea(app.data.rooms, r.preferredArea)?.id ?? '',
+      // No room for "Ingen preferanse" or a room that is gone or closed: the admin picks one.
+      roomId: requestedRoom(app.data.rooms, r)?.id ?? '',
       title: r.eventName,
       description: bookingDescription(r),
       publicRequestId: r.id,
@@ -186,13 +175,26 @@ function RequestItem({ request: r, actions }: { request: PublicRequest; actions?
           <Detail label="Medlem av Kulturstyret/Studentersamfunnet">
             {r.memberOfKulturstyretOrSamfunnet ? 'Ja' : 'Nei'}
           </Detail>
-          <Detail label="Ønsket fellesareal">{preferredAreaLabel(r.preferredArea)}</Detail>
+          <Detail label="Ønsket rom">{r.preferredRoomName ?? 'Ingen preferanse'}</Detail>
           <Detail label="Dato og tid">
             <span className="inline-block first-letter:uppercase">{formatDate(r.start)}</span>,{' '}
             {formatTimeRange(r.start, r.end)}
             {crossesMidnight(r.start, r.end) && ` (slutter ${formatDate(r.end)})`}
           </Detail>
-          <Detail label="Behov for villavakt">{r.needsVillaGuard ? 'Ja' : 'Nei'}</Detail>
+          {r.contacts.length > 0 && (
+            <Detail label="Ansvarlige">
+              <ul className="space-y-1">
+                {r.contacts.map((c, i) => (
+                  <li key={i}>
+                    <span className="font-medium">{c.name}</span> ({c.organization}) · kortnr. {c.cardNumber} ·{' '}
+                    <a href={`tel:${c.phone}`} className="text-blue-700 hover:underline">
+                      {c.phone}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </Detail>
+          )}
           <Detail label="Beskrivelse">
             <p ref={descriptionRef} className={cn('whitespace-pre-line', !expanded && 'line-clamp-3')}>
               {r.description}

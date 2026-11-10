@@ -12,11 +12,13 @@ public record RoomResponse(
         String color,
         RoomStatus status,
         /** The current user's booking right per organization they belong to. */
-        List<OrganizationPermission> permissions) {
+        List<OrganizationPermission> permissions,
+        /** Empty: open around the clock (apart from 05:00–07:00). */
+        List<OpeningHours.Entry> openingHours) {
 
     public record OrganizationPermission(UUID organizationId, Permission permission) {}
 
-    static RoomResponse from(Room room, List<OrganizationPermission> permissions) {
+    static RoomResponse from(Room room, List<OrganizationPermission> permissions, List<OpeningHours.Interval> hours) {
         return new RoomResponse(
                 room.getId(),
                 room.getName(),
@@ -25,6 +27,7 @@ public record RoomResponse(
                 room.getCapacity(),
                 room.getColor(),
                 room.getStatus(),
-                permissions);
+                permissions,
+                OpeningHours.toEntries(hours));
     }
 }

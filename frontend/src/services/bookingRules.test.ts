@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { combineEnd } from '../lib/dates'
-import type { AppData, Booking, Room, User } from '../types'
-import { canChangeBooking, evaluateBooking, evaluateEdit, isExpiredRequest, matchesRequestFilter, overlapsClosedHours, roomsOnBehalf } from './bookingRules'
+import type { AppData, Booking, OpeningHoursEntry, Room, User } from '../types'
+import {
+  canChangeBooking,
+  describeOpeningHours,
+  evaluateBooking,
+  evaluateEdit,
+  isExpiredRequest,
+  matchesRequestFilter,
+  openingHoursProblem,
+  overlapsClosedHours,
+  roomsOnBehalf,
+  withinOpeningHours,
+} from './bookingRules'
 
 const NOW = new Date('2030-01-01T10:00:00Z')
 const HOUR = 3_600_000
@@ -198,5 +209,48 @@ describe('matchesRequestFilter', () => {
 
     const night = { roomId: 'r', organizationId: 'org', title: 'Fest', start: '2030-01-02T01:00+01:00', end: '2030-01-02T06:00+01:00' }
     expect(evaluateBooking(data(), user, night, NOW)).toMatchObject({ ok: false, code: 'RULE_VIOLATION' })
+  })
+
+  describe('opening hours', () => {
+    // UiB-kantina: weekdays 16:30–24:00, weekends 08:00–16:00.
+    const canteen: OpeningHoursEntry[] = [
+      ...(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'] as const).map((day) => ({ day, opens: '16:30', closes: '24:00' })),
+      ...(['SATURDAY', 'SUNDAY'] as const).map((day) => ({ day, opens: '08:00', closes: '16:00' })),
+    ]
+
+    it('allows only bookings within the start day’s interval, up to 24:00', () => {
+      // Tuesday 1 January 2030 is a Tuesday; Saturday 5 January.
+      expect(withinOpeningHours(canteen, '2030-01-01T16:30+01:00', '2030-01-01T20:00+01:00')).toBe(true)
+      expect(withinOpeningHours(canteen, '2030-01-01T18:00+01:00', '2030-01-02T00:00+01:00')).toBe(true)
+      expect(withinOpeningHours(canteen, '2030-01-01T16:00+01:00', '2030-01-01T18:00+01:00')).toBe(false)
+      expect(withinOpeningHours(canteen, '2030-01-01T20:00+01:00', '2030-01-02T01:00+01:00')).toBe(false)
+      expect(withinOpeningHours(canteen, '2030-01-05T08:00+01:00', '2030-01-05T16:00+01:00')).toBe(true)
+      expect(withinOpeningHours(canteen, '2030-01-05T15:00+01:00', '2030-01-05T17:00+01:00')).toBe(false)
+      expect(withinOpeningHours([{ day: 'SATURDAY', opens: '08:00', closes: '16:00' }], '2030-01-01T10:00+01:00', '2030-01-01T11:00+01:00')).toBe(false)
+      expect(withinOpeningHours([], '2030-01-01T01:00+01:00', '2030-01-01T04:00+01:00')).toBe(true)
+    })
+
+    it('describes the hours like the backend', () => {
+      expect(describeOpeningHours(canteen)).toBe('man–fre 16:30–24:00, lør–søn 08:00–16:00')
+    })
+
+    it('refuses a booking outside the room’s hours with the backend’s message', () => {
+      const tuesday = new Date('2029-12-31T10:00:00Z')
+      const result = evaluateBooking(data([{ ...room, openingHours: canteen }]), user, {
+        roomId: 'r',
+        organizationId: 'org',
+        title: 'Lunsj',
+        start: '2030-01-01T12:00+01:00',
+        end: '2030-01-01T13:00+01:00',
+      }, tuesday)
+      expect(result).toMatchObject({ ok: false, code: 'RULE_VIOLATION', message: 'Møterom er bare åpent man–fre 16:30–24:00, lør–søn 08:00–16:00.' })
+    })
+
+    it('validates hours before saving', () => {
+      expect(openingHoursProblem(canteen)).toBeNull()
+      expect(openingHoursProblem([{ day: 'MONDAY', opens: '18:00', closes: '16:00' }])).toMatch(/starte før/)
+      expect(openingHoursProblem([{ day: 'MONDAY', opens: '8', closes: '16:00' }])).toMatch(/TT:MM/)
+      expect(openingHoursProblem([{ day: 'MONDAY', opens: '08:00', closes: '24:30' }])).toMatch(/TT:MM/)
+    })
   })
 })

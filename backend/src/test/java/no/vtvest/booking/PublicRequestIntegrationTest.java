@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.time.Instant;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
@@ -15,13 +16,28 @@ import org.springframework.test.web.servlet.ResultActions;
 /** The public request form (/soknad) and how a system admin handles the requests. */
 class PublicRequestIntegrationTest extends IntegrationTest {
 
+    private static final java.time.ZoneId OSLO_ZONE = java.time.ZoneId.of("Europe/Oslo");
+
     private static final UUID ORG_C = UUID.fromString("10000000-0000-0000-0000-00000000000c");
 
+    private static final String CONTACT =
+            "{\"name\":\" Kari Nordmann \",\"organization\":\"Ekstern forening\",\"cardNumber\":\"1234 5678\",\"phone\":\"+47 912 34 567\"}";
+
+    /** Storsalen is offered in the form (see setUp). */
     private static String requestJson(Instant start, Instant end) {
+        return requestJson(start, end, "\"" + STORSALEN + "\"", "[" + CONTACT + "]");
+    }
+
+    private static String requestJson(Instant start, Instant end, String roomId, String contacts) {
         return """
                 {"email":" Leder@Example.TEST ","organizationName":"Ekstern forening","eventName":" Hagekonsert ","memberOfKulturstyretOrSamfunnet":true,
-                 "preferredArea":"TORGALLMENNINGEN","start":"%s","end":"%s","description":"Konsert i hagen","needsVillaGuard":true}
-                """.formatted(start, end);
+                 "preferredRoomId":%s,"start":"%s","end":"%s","description":"Konsert i hagen","contacts":%s}
+                """.formatted(roomId, start, end, contacts);
+    }
+
+    @BeforeEach
+    void offerStorsalen() {
+        jdbc.update("UPDATE rooms SET public_requestable = true WHERE id = ?", STORSALEN);
     }
 
     /** Without logging in, exactly like the public form. */
@@ -48,9 +64,16 @@ class PublicRequestIntegrationTest extends IntegrationTest {
                 .containsEntry("organization_name", "Ekstern forening")
                 .containsEntry("event_name", "Hagekonsert")
                 .containsEntry("member_of_kulturstyret_or_samfunnet", true)
-                .containsEntry("needs_villa_guard", true)
-                .containsEntry("preferred_area", "TORGALLMENNINGEN")
+                .containsEntry("preferred_room_id", STORSALEN)
+                .containsEntry("preferred_room_name", "Storsalen")
                 .containsEntry("status", "NEW");
+        // Spaces and hyphens are removed from the card number and phone.
+        assertThat(jdbc.queryForMap("SELECT * FROM public_request_contacts WHERE request_id = ?", id))
+                .containsEntry("position", 0)
+                .containsEntry("name", "Kari Nordmann")
+                .containsEntry("organization", "Ekstern forening")
+                .containsEntry("card_number", "12345678")
+                .containsEntry("phone", "+4791234567");
 
         mvc.perform(post("/api/public/requests").contentType(MediaType.APPLICATION_JSON).content(requestJson(at(7, 18), at(7, 20))))
                 .andExpect(status().isForbidden());
@@ -63,14 +86,27 @@ class PublicRequestIntegrationTest extends IntegrationTest {
         submitAnonymously(requestJson(at(7, 0), at(8, 2))).andExpect(status().isBadRequest());
         submitAnonymously(requestJson(at(7, 18), at(7, 20)).replace("Leder@Example.TEST", "ikke-epost"))
                 .andExpect(status().isBadRequest());
-        submitAnonymously(requestJson(at(7, 18), at(7, 20)).replace("\"needsVillaGuard\":true", "\"needsVillaGuard\":null"))
-                .andExpect(status().isBadRequest());
+        // Longer than 22 hours (07:00–05:00 is the longest the closed hours leave).
+        submitAnonymously(requestJson(at(7, 0), at(7, 23).plusSeconds(3600))).andExpect(status().isBadRequest());
         submitAnonymously(requestJson(at(7, 18), at(7, 20)).replace(" Hagekonsert ", " ")).andExpect(status().isBadRequest());
         submitAnonymously(requestJson(at(7, 18), at(7, 20)).replace(" Hagekonsert ", "x".repeat(81))).andExpect(status().isBadRequest());
-        // The area is required, and only the two common areas or no preference are accepted.
-        submitAnonymously(requestJson(at(7, 18), at(7, 20)).replace("\"preferredArea\":\"TORGALLMENNINGEN\",", ""))
+        // Only rooms offered in the form; unknown, unoffered and closed rooms are refused.
+        submitAnonymously(requestJson(at(7, 18), at(7, 20), "\"" + ROOM_A + "\"", "[" + CONTACT + "]"))
                 .andExpect(status().isBadRequest());
-        submitAnonymously(requestJson(at(7, 18), at(7, 20)).replace("TORGALLMENNINGEN", "KJELLEREN"))
+        submitAnonymously(requestJson(at(7, 18), at(7, 20), "\"" + java.util.UUID.randomUUID() + "\"", "[" + CONTACT + "]"))
+                .andExpect(status().isBadRequest());
+        jdbc.update("UPDATE rooms SET status = 'DISABLED' WHERE id = ?", STORSALEN);
+        submitAnonymously(requestJson(at(7, 18), at(7, 20))).andExpect(status().isBadRequest());
+        jdbc.update("UPDATE rooms SET status = 'ACTIVE' WHERE id = ?", STORSALEN);
+        // 1–10 contacts, each complete, with a card number of digits and a phone number.
+        submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[]")).andExpect(status().isBadRequest());
+        submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[" + String.join(",", java.util.Collections.nCopies(11, CONTACT)) + "]"))
+                .andExpect(status().isBadRequest());
+        submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[" + CONTACT.replace("1234 5678", "s123456") + "]"))
+                .andExpect(status().isBadRequest());
+        submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[" + CONTACT.replace("+47 912 34 567", "112") + "]"))
+                .andExpect(status().isBadRequest());
+        submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[" + CONTACT.replace(" Kari Nordmann ", " ") + "]"))
                 .andExpect(status().isBadRequest());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM public_requests", Integer.class)).isZero();
     }
@@ -124,7 +160,9 @@ class PublicRequestIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$[0].description").value("Konsert i hagen"))
                 .andExpect(jsonPath("$[0].organizationName").value("Ekstern forening"))
                 .andExpect(jsonPath("$[0].eventName").value("Hagekonsert"))
-                .andExpect(jsonPath("$[0].preferredArea").value("TORGALLMENNINGEN"))
+                .andExpect(jsonPath("$[0].preferredRoomId").value(STORSALEN.toString()))
+                .andExpect(jsonPath("$[0].preferredRoomName").value("Storsalen"))
+                .andExpect(jsonPath("$[0].contacts[0].cardNumber").value("12345678"))
                 .andExpect(jsonPath("$[0].status").value("NEW"));
     }
 
@@ -141,6 +179,59 @@ class PublicRequestIntegrationTest extends IntegrationTest {
         call(post("/api/admin/public-requests/" + id + "/booking"), ADMIN,
                 bookingJson(ROOM_A, ORG_B, "Konsert", at(7, 18), at(7, 20)))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void noPreferenceAndSeveralContactsAreFine() throws Exception {
+        String second = CONTACT.replace(" Kari Nordmann ", "Ola Nordmann").replace("1234 5678", "87654321");
+        submitAnonymously(requestJson(at(7, 18), at(7, 20), "null", "[" + CONTACT + "," + second + "]"))
+                .andExpect(status().isNoContent());
+        call(get("/api/admin/public-requests"), ADMIN, null)
+                .andExpect(jsonPath("$[0].preferredRoomId").doesNotExist())
+                .andExpect(jsonPath("$[0].preferredRoomName").doesNotExist())
+                .andExpect(jsonPath("$[0].contacts.length()").value(2))
+                .andExpect(jsonPath("$[0].contacts[1].name").value("Ola Nordmann"));
+    }
+
+    @Test
+    void aDeletedRoomKeepsItsNameOnTheRequest() throws Exception {
+        submit(at(7, 18), at(7, 20));
+        jdbc.update("UPDATE rooms SET status = 'ARCHIVED' WHERE id = ?", STORSALEN);
+        call(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/admin/rooms/" + STORSALEN), ADMIN, null)
+                .andExpect(status().isNoContent());
+        call(get("/api/admin/public-requests"), ADMIN, null)
+                .andExpect(jsonPath("$[0].preferredRoomId").doesNotExist())
+                .andExpect(jsonPath("$[0].preferredRoomName").value("Storsalen"));
+    }
+
+    @Test
+    void theFormListsOnlyOfferedActiveRoomsWithTheirOpeningHours() throws Exception {
+        jdbc.update("INSERT INTO room_opening_hours (room_id, day_of_week, opens_minute, closes_minute) VALUES (?, 6, 480, 960)", STORSALEN);
+        jdbc.update("UPDATE rooms SET public_requestable = true, status = 'DISABLED' WHERE id = ?", ROOM_B);
+
+        mvc.perform(get("/api/public/rooms"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(STORSALEN.toString()))
+                .andExpect(jsonPath("$[0].name").value("Storsalen"))
+                .andExpect(jsonPath("$[0].openingHours[0].day").value("SATURDAY"))
+                .andExpect(jsonPath("$[0].openingHours[0].opens").value("08:00"))
+                .andExpect(jsonPath("$[0].openingHours[0].closes").value("16:00"))
+                .andExpect(jsonPath("$[0].defaultPermission").doesNotExist());
+    }
+
+    @Test
+    void aRequestForARoomMustBeWithinItsOpeningHours() throws Exception {
+        // Storsalen open only Saturdays 08:00–16:00.
+        jdbc.update("INSERT INTO room_opening_hours (room_id, day_of_week, opens_minute, closes_minute) VALUES (?, 6, 480, 960)", STORSALEN);
+        java.time.LocalDate saturday = java.time.LocalDate.now(OSLO_ZONE).plusDays(7).with(java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.SATURDAY));
+        Instant ten = saturday.atTime(10, 0).atZone(OSLO_ZONE).toInstant();
+        submitAnonymously(requestJson(ten, ten.plusSeconds(4 * 3600))).andExpect(status().isNoContent());
+        submitAnonymously(requestJson(ten, ten.plusSeconds(8 * 3600)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail").value("Storsalen er bare åpent lør 08:00–16:00."));
+        // Without a preference, the hours don't apply to the request; the admin picks a room.
+        submitAnonymously(requestJson(ten, ten.plusSeconds(8 * 3600), "null", "[" + CONTACT + "]")).andExpect(status().isNoContent());
     }
 
     @Test

@@ -9,7 +9,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 
-/** Migrations that change or add data: V3 (nobody gains a login), V7 (the shared external organization) and V8 (event names). */
+/**
+ * Migrations that change or add data: V3 (nobody gains a login), V7 (the shared external
+ * organization), V8 (event names) and V9 (requested rooms instead of areas).
+ */
 class MigrationIntegrationTest extends IntegrationTest {
 
     @Autowired
@@ -85,6 +88,35 @@ class MigrationIntegrationTest extends IntegrationTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM " + schema + ".public_requests", Integer.class)).isEqualTo(2);
         assertThatThrownBy(() -> jdbc.update("UPDATE " + schema + ".public_requests SET event_name = ' '"))
                 .isInstanceOf(DataIntegrityViolationException.class);
+        jdbc.execute("DROP SCHEMA " + schema + " CASCADE");
+    }
+
+    @Test
+    void v9OffersTheTwoCommonAreasAndTurnsRequestedAreasIntoRooms() {
+        String schema = "migration_test_v9";
+        jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+        Flyway.configure().dataSource(dataSource).schemas(schema).target("8").load().migrate();
+        jdbc.update("INSERT INTO " + schema + ".rooms (id, name, color) VALUES "
+                + "('00000000-0000-0000-0000-0000000000f1', ' festplassen ', '#123456'), "
+                + "('00000000-0000-0000-0000-0000000000f2', 'Møterom', '#123456')");
+        jdbc.update("INSERT INTO " + schema + ".public_requests (email, organization_name, event_name, member_of_kulturstyret_or_samfunnet, "
+                + "start_at, end_at, description, needs_villa_guard, preferred_area) VALUES "
+                + "('a@example.test', 'Org', 'Fest', true, now() + interval '1 day', now() + interval '25 hours', 'Fest', true, 'FESTPLASSEN'), "
+                + "('b@example.test', 'Org', 'Fest', true, now() + interval '1 day', now() + interval '25 hours', 'Fest', true, 'TORGALLMENNINGEN'), "
+                + "('c@example.test', 'Org', 'Fest', true, now() + interval '1 day', now() + interval '25 hours', 'Fest', false, 'NO_PREFERENCE')");
+
+        Flyway.configure().dataSource(dataSource).schemas(schema).load().migrate();
+
+        assertThat(jdbc.queryForList("SELECT name, public_requestable FROM " + schema + ".rooms ORDER BY name"))
+                .extracting(row -> row.get("name") + " " + row.get("public_requestable"))
+                .containsExactly(" festplassen  true", "Møterom false");
+        // Torgallmenningen doesn't exist as a room here: the name is kept without an id.
+        assertThat(jdbc.queryForList("SELECT email, preferred_room_id, preferred_room_name FROM " + schema + ".public_requests ORDER BY email"))
+                .extracting(row -> row.get("email") + " " + row.get("preferred_room_id") + " " + row.get("preferred_room_name"))
+                .containsExactly(
+                        "a@example.test 00000000-0000-0000-0000-0000000000f1 Festplassen",
+                        "b@example.test null Torgallmenningen",
+                        "c@example.test null null");
         jdbc.execute("DROP SCHEMA " + schema + " CASCADE");
     }
 }

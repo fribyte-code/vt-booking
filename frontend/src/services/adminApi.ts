@@ -1,6 +1,5 @@
-import type { BookingStatus, CreateBookingInput, Permission } from '../types'
+import type { BookingStatus, CreateBookingInput, OpeningHoursEntry, Permission } from '../types'
 import { createApiClient } from './apiClient'
-import type { PreferredArea } from './publicRequests'
 
 /**
  * User, organization and room management against the Spring Boot API. The server enforces
@@ -42,6 +41,10 @@ export interface RoomFields {
   status?: RoomStatus
   /** With status DISABLED or ARCHIVED: also cancel the room's future bookings. */
   cancelFutureBookings?: boolean
+  /** Offered in the public request form (/soknad). */
+  publicRequestable: boolean
+  /** At most one per weekday. Empty: open around the clock (apart from 05:00–07:00). */
+  openingHours: OpeningHoursEntry[]
 }
 
 export interface AdminRoom extends RoomFields {
@@ -83,17 +86,29 @@ export interface OrgInvitation {
 export type PublicRequestStatus = 'NEW' | 'TRANSFERRED' | 'REJECTED'
 
 /** A booking request for Studentvillaen sent from the public form (/soknad). */
+/** A person responsible at the event. `cardNumber` is the UiB card number, not the student number. */
+export interface PublicRequestContact {
+  name: string
+  organization: string
+  cardNumber: string
+  phone: string
+}
+
 export interface PublicRequest {
   id: string
   email: string
   organizationName: string
   eventName: string
   memberOfKulturstyretOrSamfunnet: boolean
-  preferredArea: PreferredArea
+  /** Null for no preference, or when the room has been deleted (the name is kept). */
+  preferredRoomId: string | null
+  /** The room's current name, or the name it had if deleted; null for no preference. */
+  preferredRoomName: string | null
   start: string
   end: string
   description: string
-  needsVillaGuard: boolean
+  /** Empty for requests sent before contacts were asked for. */
+  contacts: PublicRequestContact[]
   status: PublicRequestStatus
   createdAt: string
   bookingId: string | null

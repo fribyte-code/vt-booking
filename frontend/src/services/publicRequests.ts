@@ -1,29 +1,66 @@
 import { crossesMidnight, formatDate, formatTimeRange } from '../lib/dates'
-import type { Organization, Room } from '../types'
-import type { PublicRequest } from './adminApi'
+import type { OpeningHoursEntry, Organization, Room } from '../types'
+import type { PublicRequest, PublicRequestContact } from './adminApi'
 
-/** The common area a public request is for. Only Festplassen and Torgallmenningen are offered for now. */
-export type PreferredArea = 'FESTPLASSEN' | 'TORGALLMENNINGEN' | 'NO_PREFERENCE'
+/** Same as the backend: 07:00 to 05:00 the next day is the longest the closed hours (05:00–07:00) leave. */
+export const PUBLIC_REQUEST_MAX_HOURS = 22
+export const MAX_CONTACTS = 10
 
-/** The form's options. The priority notes are guidance only; the admin decides. */
-export const preferredAreas: { value: PreferredArea; label: string; hint?: string }[] = [
-  { value: 'FESTPLASSEN', label: 'Festplassen', hint: 'Ca. 50 personer. Villaorganisasjoner prioriteres.' },
-  { value: 'TORGALLMENNINGEN', label: 'Torgallmenningen', hint: 'Ca. 50 personer. Eksterne organisasjoner prioriteres.' },
-  { value: 'NO_PREFERENCE', label: 'Ingen preferanse' },
-]
+/** A room offered in the public form (`GET /api/public/rooms`): active and marked by an admin. */
+export interface PublicRoom {
+  id: string
+  name: string
+  description: string | null
+  capacity: number | null
+  openingHours: OpeningHoursEntry[]
+}
 
-export function preferredAreaLabel(area: PreferredArea): string {
-  return preferredAreas.find((a) => a.value === area)?.label ?? area
+/** The room asked for, among the rooms the admin can book; none for no preference or a deleted room. */
+export function requestedRoom(rooms: Room[], r: Pick<PublicRequest, 'preferredRoomId'>): Room | undefined {
+  return r.preferredRoomId ? rooms.find((room) => room.id === r.preferredRoomId) : undefined
+}
+
+/** A contact person on one line, as in the booking description and replies. */
+export function contactLine(c: PublicRequestContact): string {
+  return `${c.name} (${c.organization}), kortnr. ${c.cardNumber}, tlf. ${c.phone}`
 }
 
 /**
- * The room for the requested area: the room with the area's name (case and surrounding spaces
- * ignored). None for "Ingen preferanse" or when no room has that name; the admin picks one then.
+ * The booking's description, prefilled from the request: the applicant's description first, then
+ * the facts the booking should carry. Bookings allow 500 characters, so the description is cut
+ * first and, with many contacts, the end of the facts.
  */
-export function roomForArea(rooms: Room[], area: PreferredArea): Room | undefined {
-  if (area === 'NO_PREFERENCE') return undefined
-  const name = preferredAreaLabel(area).toLowerCase()
-  return rooms.find((r) => r.name.trim().toLowerCase() === name)
+export function bookingDescription(r: PublicRequest): string {
+  const facts = [
+    `Kontakt: ${r.email}`,
+    `Ønsket rom: ${r.preferredRoomName ?? 'Ingen preferanse'}`,
+    `Medlem av Kulturstyret eller Studentersamfunnet: ${r.memberOfKulturstyretOrSamfunnet ? 'Ja' : 'Nei'}`,
+    ...(r.contacts.length > 0 ? ['Ansvarlige:', ...r.contacts.map((c) => `- ${contactLine(c)}`)] : []),
+  ].join('\n')
+  const room = Math.max(0, 500 - facts.length - 2)
+  return `${r.description.slice(0, room)}\n\n${facts}`.slice(0, 500)
+}
+
+export const emptyContact = (): PublicRequestContact => ({ name: '', organization: '', cardNumber: '', phone: '' })
+
+const compact = (value: string) => value.replace(/[\s-]/g, '')
+
+/**
+ * Why a contact person can't be sent, or null. Same rules as the backend: everything filled in, a
+ * card number of 4–20 digits (the UiB card number, not the student number) and a phone number of
+ * 8–15 digits, optionally with + first. Spaces and hyphens are ignored.
+ */
+export function contactProblem(c: PublicRequestContact): string | null {
+  if (!c.name.trim() || !c.organization.trim() || !c.cardNumber.trim() || !c.phone.trim()) {
+    return 'Fyll ut navn, organisasjon, kortnummer og telefonnummer.'
+  }
+  if (!/^[0-9]{4,20}$/.test(compact(c.cardNumber))) {
+    return 'Kortnummeret skal bare ha sifre. Bruk nummeret på UiB-kortet, ikke studentnummeret.'
+  }
+  if (!/^\+?[0-9]{8,15}$/.test(compact(c.phone))) {
+    return 'Telefonnummeret må ha 8–15 sifre, eventuelt med + foran.'
+  }
+  return null
 }
 
 /** The shared organization for public requests (created by migration V7), matched by name. */
@@ -71,7 +108,7 @@ export function replyMailto(r: PublicRequest, booking?: TransferredBooking): str
     ? booking
       ? [`Rom: ${booking.roomName}`, `Tidspunkt: ${formatWhen(booking.start, booking.end)}`]
       : [`Ønsket tidspunkt: ${formatWhen(r.start, r.end)}`]
-    : [`Tidspunkt: ${formatWhen(r.start, r.end)}`, `Ønsket fellesareal: ${preferredAreaLabel(r.preferredArea)}`]
+    : [`Tidspunkt: ${formatWhen(r.start, r.end)}`, `Ønsket rom: ${r.preferredRoomName ?? 'Ingen preferanse'}`]
   const body = [
     'Hei,',
     '',
@@ -80,7 +117,7 @@ export function replyMailto(r: PublicRequest, booking?: TransferredBooking): str
     `Arrangement: ${r.eventName}`,
     `Organisasjon: ${r.organizationName}`,
     ...details,
-    `Behov for villavakt: ${r.needsVillaGuard ? 'Ja' : 'Nei'}`,
+    ...(r.status === 'REJECTED' ? [] : ['', 'Husk at arrangementet må ha villavakt.']),
     '',
     '',
     '',

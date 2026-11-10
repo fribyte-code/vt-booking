@@ -24,6 +24,7 @@ import no.vtvest.booking.common.ApiException;
 import no.vtvest.booking.common.ErrorCode;
 import no.vtvest.booking.organization.Organization;
 import no.vtvest.booking.room.Permission;
+import no.vtvest.booking.room.OpeningHours;
 import no.vtvest.booking.room.Room;
 import no.vtvest.booking.user.User;
 import org.springframework.stereotype.Service;
@@ -64,6 +65,7 @@ public class BookingSeriesService {
         List<Slot> slots = occurrences(request);
         Organization organization = bookingService.requireMembership(actor, request.organizationId(), false);
         Room room = bookingService.findBookableRoom(request.roomId());
+        requireOpen(room, slots);
         bookingService.requirePermission(room, organization);
         List<Slot> conflicts = conflicts(room, slots);
         return new SeriesPreview(slots.stream()
@@ -81,6 +83,7 @@ public class BookingSeriesService {
         List<Slot> slots = occurrences(request);
         Organization organization = bookingService.requireMembership(actor, request.organizationId(), true);
         Room room = bookingService.lockBookableRoom(request.roomId());
+        requireOpen(room, slots);
         Permission permission = bookingService.requirePermission(room, organization);
 
         List<Slot> conflicts = conflicts(room, slots);
@@ -199,6 +202,7 @@ public class BookingSeriesService {
         if (!moving.isEmpty()) {
             moving.forEach(b -> BookingService.requireMovableFrom(locked.get(b.getRoomId())));
             room = BookingService.requireMoveTarget(locked, request.roomId());
+            requireOpen(room, moving.stream().map(plan::get).toList());
             permission = bookingService.requirePermission(room, organization);
             skipped = conflicting(room, moving, plan);
         }
@@ -462,5 +466,11 @@ public class BookingSeriesService {
                 .map(b -> new Slot(b.getStartAt(), b.getEndAt()))
                 .toList();
         return slots.stream().filter(s -> approved.stream().anyMatch(a -> overlaps(a, s))).toList();
+    }
+
+    /** Every occurrence must lie within the room's opening hours. */
+    private void requireOpen(Room room, List<Slot> slots) {
+        List<OpeningHours.Interval> hours = bookingService.openingHoursOf(room);
+        slots.forEach(s -> OpeningHours.require(room.getName(), hours, s.start(), s.end(), zone));
     }
 }

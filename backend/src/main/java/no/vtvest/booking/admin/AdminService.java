@@ -16,6 +16,8 @@ import no.vtvest.booking.common.ApiException;
 import no.vtvest.booking.common.ErrorCode;
 import no.vtvest.booking.organization.MembershipRole;
 import no.vtvest.booking.organization.OrganizationStatus;
+import no.vtvest.booking.room.OpeningHours;
+import no.vtvest.booking.room.OpeningHoursRepository;
 import no.vtvest.booking.room.Permission;
 import no.vtvest.booking.room.RoomStatus;
 import no.vtvest.booking.user.AccountService;
@@ -33,11 +35,13 @@ class AdminService {
     private final JdbcTemplate jdbc;
     private final AccountService accounts;
     private final BookingService bookingService;
+    private final OpeningHoursRepository openingHours;
 
-    AdminService(JdbcTemplate jdbc, AccountService accounts, BookingService bookingService) {
+    AdminService(JdbcTemplate jdbc, AccountService accounts, BookingService bookingService, OpeningHoursRepository openingHours) {
         this.jdbc = jdbc;
         this.accounts = accounts;
         this.bookingService = bookingService;
+        this.openingHours = openingHours;
     }
 
     static void requireSystemAdmin(User actor) {
@@ -271,13 +275,15 @@ class AdminService {
     List<AdminRoom> listRooms() {
         Map<UUID, List<RoomAccessEntry>> access =
                 accessByRoom("SELECT room_id, organization_id, permission FROM room_access");
-        return jdbc.query(ROOMS + " ORDER BY r.status, lower(r.name)", (rs, i) -> toRoom(rs, access));
+        Map<UUID, List<OpeningHours.Interval>> hours = openingHours.all();
+        return jdbc.query(ROOMS + " ORDER BY r.status, lower(r.name)", (rs, i) -> toRoom(rs, access, hours));
     }
 
     private AdminRoom room(UUID id) {
         Map<UUID, List<RoomAccessEntry>> access =
                 accessByRoom("SELECT room_id, organization_id, permission FROM room_access WHERE room_id = ?", id);
-        return jdbc.query(ROOMS + " WHERE r.id = ?", (rs, i) -> toRoom(rs, access), id)
+        Map<UUID, List<OpeningHours.Interval>> hours = Map.of(id, openingHours.forRoom(id));
+        return jdbc.query(ROOMS + " WHERE r.id = ?", (rs, i) -> toRoom(rs, access, hours), id)
                 .stream().findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Rommet finnes ikke."));
     }
@@ -289,7 +295,9 @@ class AdminService {
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
 
-    private static AdminRoom toRoom(ResultSet rs, Map<UUID, List<RoomAccessEntry>> access) throws SQLException {
+    private static AdminRoom toRoom(
+            ResultSet rs, Map<UUID, List<RoomAccessEntry>> access, Map<UUID, List<OpeningHours.Interval>> hours)
+            throws SQLException {
         UUID id = rs.getObject("id", UUID.class);
         return new AdminRoom(
                 id,
@@ -301,36 +309,47 @@ class AdminService {
                 RoomStatus.valueOf(rs.getString("status")),
                 Permission.valueOf(rs.getString("default_permission")),
                 new ArrayList<>(access.getOrDefault(id, List.of())),
-                rs.getInt("booking_count"));
+                rs.getInt("booking_count"),
+                rs.getBoolean("public_requestable"),
+                OpeningHours.toEntries(hours.getOrDefault(id, List.of())));
     }
 
     @Transactional
     AdminRoom createRoom(RoomFields body) {
         String name = body.name().trim();
         requireUniqueRoomName(name, null);
+        List<OpeningHours.Interval> hours = OpeningHours.parse(body.openingHours());
         UUID id = jdbc.queryForObject("""
-                INSERT INTO rooms (name, description, location, capacity, color, default_permission)
-                VALUES (?, ?, ?, ?, ?, ?) RETURNING id
+                INSERT INTO rooms (name, description, location, capacity, color, default_permission, public_requestable)
+                VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id
                 """, UUID.class, name, blankToNull(body.description()), blankToNull(body.location()),
-                body.capacity(), body.color(), body.defaultPermission().name());
+                body.capacity(), body.color(), body.defaultPermission().name(), Boolean.TRUE.equals(body.publicRequestable()));
+        openingHours.replace(id, hours);
         return room(id);
     }
 
     /**
      * Disabling or archiving a room cancels its future bookings only with
      * {@code cancelFutureBookings: true}. Otherwise they stay, and the room just can't be booked.
+     * New opening hours apply to new bookings, moves and approvals; existing bookings are kept.
      */
     @Transactional
     AdminRoom updateRoom(User actor, UUID id, RoomFields body) {
         room(id);
         String name = body.name().trim();
         requireUniqueRoomName(name, id);
+        List<OpeningHours.Interval> hours = body.openingHours() == null ? null : OpeningHours.parse(body.openingHours());
+        // Updating the row locks it, as booking writes do, so the hours can't change under one.
         jdbc.update("""
                 UPDATE rooms SET name = ?, description = ?, location = ?, capacity = ?, color = ?, default_permission = ?,
-                    status = coalesce(?, status)
+                    status = coalesce(?, status), public_requestable = coalesce(?, public_requestable)
                 WHERE id = ?
                 """, name, blankToNull(body.description()), blankToNull(body.location()), body.capacity(), body.color(),
-                body.defaultPermission().name(), body.status() == null ? null : body.status().name(), id);
+                body.defaultPermission().name(), body.status() == null ? null : body.status().name(),
+                body.publicRequestable(), id);
+        if (hours != null) {
+            openingHours.replace(id, hours);
+        }
         if (Boolean.TRUE.equals(body.cancelFutureBookings()) && body.status() != null && body.status() != RoomStatus.ACTIVE) {
             String reason = body.status() == RoomStatus.ARCHIVED ? "Rommet er arkivert." : "Rommet er stengt.";
             bookingService.cancelFuture(actor, BookingService.Scope.ROOM, id, true, reason);

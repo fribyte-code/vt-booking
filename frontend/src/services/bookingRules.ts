@@ -1,4 +1,4 @@
-import type { AppData, Booking, BookingStatus, CreateBookingInput, Permission, Room, TimeSlot, UpdateBookingInput, User } from '../types'
+import type { AppData, Booking, BookingStatus, CreateBookingInput, OpeningHoursEntry, Permission, Room, TimeSlot, UpdateBookingInput, User, Weekday } from '../types'
 
 /**
  * Pure booking rules, shared by the service layer (enforcement) and the UI
@@ -54,6 +54,95 @@ const osloParts = new Intl.DateTimeFormat('en-US', {
 function wallClock(ms: number): number {
   const p = Object.fromEntries(osloParts.formatToParts(new Date(ms)).map((x) => [x.type, Number(x.value)]))
   return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) + (ms % 1000)
+}
+
+export const WEEKDAYS: Weekday[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
+export const weekdayShort: Record<Weekday, string> = {
+  MONDAY: 'man',
+  TUESDAY: 'tir',
+  WEDNESDAY: 'ons',
+  THURSDAY: 'tor',
+  FRIDAY: 'fre',
+  SATURDAY: 'lør',
+  SUNDAY: 'søn',
+}
+
+export const weekdayNames: Record<Weekday, string> = {
+  MONDAY: 'Mandag',
+  TUESDAY: 'Tirsdag',
+  WEDNESDAY: 'Onsdag',
+  THURSDAY: 'Torsdag',
+  FRIDAY: 'Fredag',
+  SATURDAY: 'Lørdag',
+  SUNDAY: 'Søndag',
+}
+
+/** "HH:MM", with 24:00 for midnight as a closing time. */
+export const OPENING_TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$/
+
+/** Why opening hours can't be saved, or null. The backend's `OpeningHours.parse` checks the same. */
+export function openingHoursProblem(hours: OpeningHoursEntry[]): string | null {
+  for (const h of hours) {
+    if (!OPENING_TIME.test(h.opens) || !OPENING_TIME.test(h.closes)) {
+      return `${weekdayNames[h.day]}: skriv tidene som TT:MM, for eksempel 16:30.`
+    }
+    if (h.opens === '24:00' || h.closes <= h.opens) return `${weekdayNames[h.day]}: åpningstiden må starte før den slutter.`
+  }
+  return null
+}
+
+const toMinutes = (time: string) => {
+  const [h, m] = time.split(':').map(Number)
+  return h * 60 + m
+}
+
+/**
+ * Whether [start, end) lies within the room's opening hours: inside the interval of the day it
+ * starts on (Europe/Oslo), ending at 24:00 at the latest. No hours means always open. Same as
+ * the backend's `OpeningHours.allows`.
+ */
+export function withinOpeningHours(hours: OpeningHoursEntry[] | undefined, start: string, end: string): boolean {
+  if (!hours || hours.length === 0) return true
+  const s = wallClock(Date.parse(start))
+  const e = wallClock(Date.parse(end))
+  const day = Math.floor(s / DAY) * DAY
+  // getUTCDay: 0 = Sunday.
+  const weekday = WEEKDAYS[(new Date(day).getUTCDay() + 6) % 7]
+  const open = hours.find((h) => h.day === weekday)
+  if (!open) return false
+  return toMinutes(open.opens) <= (s - day) / 60_000 && (e - day) / 60_000 <= toMinutes(open.closes)
+}
+
+/** E.g. "man–fre 16:30–24:00, lør–søn 08:00–16:00", like the backend's `OpeningHours.describe`. */
+export function describeOpeningHours(hours: OpeningHoursEntry[]): string {
+  const sorted = [...hours].sort((a, b) => WEEKDAYS.indexOf(a.day) - WEEKDAYS.indexOf(b.day))
+  const parts: string[] = []
+  for (let i = 0; i < sorted.length; ) {
+    const first = sorted[i]
+    let j = i
+    while (
+      j + 1 < sorted.length &&
+      WEEKDAYS.indexOf(sorted[j + 1].day) === WEEKDAYS.indexOf(sorted[j].day) + 1 &&
+      sorted[j + 1].opens === first.opens &&
+      sorted[j + 1].closes === first.closes
+    ) {
+      j++
+    }
+    const days = weekdayShort[first.day] + (j > i ? `–${weekdayShort[sorted[j].day]}` : '')
+    parts.push(`${days} ${first.opens}–${first.closes}`)
+    i = j + 1
+  }
+  return parts.join(', ')
+}
+
+/** The backend's message when a booking is outside a room's opening hours. */
+export function openingHoursMessage(roomName: string, hours: OpeningHoursEntry[]): string {
+  return `${roomName} er bare åpent ${describeOpeningHours(hours)}.`
+}
+
+function checkOpeningHours(room: Room, slot: TimeSlot): Failure | null {
+  if (withinOpeningHours(room.openingHours, slot.start, slot.end)) return null
+  return { ok: false, code: 'RULE_VIOLATION', message: openingHoursMessage(room.name, room.openingHours ?? []) }
 }
 
 /**
@@ -153,6 +242,8 @@ export function evaluateBooking(
   if (!room) {
     return { ok: false, code: 'NOT_FOUND', message: 'Rommet finnes ikke.' }
   }
+  const closed = checkOpeningHours(room, input)
+  if (closed) return closed
 
   const access = checkAccess(data, room, input.organizationId)
   if (!access.ok) return access
@@ -299,6 +390,8 @@ export function evaluateEdit(
   if (!room) {
     return { ok: false, code: 'NOT_FOUND', message: 'Rommet finnes ikke.' }
   }
+  const closed = checkOpeningHours(room, input)
+  if (closed) return closed
   const access = checkAccess(data, room, booking.organizationId)
   if (!access.ok) return access
 

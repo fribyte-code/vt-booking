@@ -77,7 +77,7 @@ The CSRF token rotates on login, so call `/api/auth/csrf` again and read a fresh
 | POST | `/api/auth/logout` | Returns 204 |
 | GET | `/api/me` | Current user, memberships and `mustChangePassword`. Also works while a password change is required. |
 | POST | `/api/me/password` | `{ currentPassword, newPassword }`. 204. Ends your other sessions; this one stays logged in. |
-| GET | `/api/rooms` | Rooms, each with your effective permission per organization you belong to. Administrators get every active organization's permission. |
+| GET | `/api/rooms` | Rooms, each with your effective permission per organization you belong to, and `openingHours` (`[{ day, opens, closes }]`, empty = always open). Administrators get every active organization's permission. |
 | GET | `/api/organizations` | Active organizations: `id` and `name` only |
 | GET | `/api/bookings?from=…&to=…[&roomId=…]` | Bookings overlapping `[from, to)`, max 62 days. Approved bookings are visible to everyone; pending requests only to your own organization and admins. |
 | GET | `/api/bookings/mine` | Your own bookings and requests, in every status, that ended in the last 90 days or later |
@@ -105,12 +105,13 @@ The CSRF token rotates on login, so call `/api/auth/csrf` again and read a fresh
 | PUT, DELETE | `/api/admin/users/{id}/memberships/{organizationId}` | Add or change (`{ role }`), or remove a membership |
 | GET, POST | `/api/admin/organizations` | List (with member counts), or create `{ name }` |
 | PATCH | `/api/admin/organizations/{id}` | Any of `{ name, status, cancelFutureBookings }` |
-| GET, POST | `/api/admin/rooms` | List (with access overrides), or create `{ name, description?, location?, capacity?, color, defaultPermission }` |
-| PUT | `/api/admin/rooms/{id}` | The same fields, plus `status` and `cancelFutureBookings` |
+| GET, POST | `/api/admin/rooms` | List (with access overrides), or create `{ name, description?, location?, capacity?, color, defaultPermission, publicRequestable?, openingHours? }`. `openingHours`: at most one `{ day: MONDAY…SUNDAY, opens: "HH:MM", closes: "HH:MM" }` per weekday, `closes` up to `"24:00"`. |
+| PUT | `/api/admin/rooms/{id}` | The same fields, plus `status` and `cancelFutureBookings`. `publicRequestable` or `openingHours` left out (null) are unchanged; `openingHours: []` removes the hours. |
 | DELETE | `/api/admin/rooms/{id}` | Deletes the room with its access overrides. A room with bookings must be `ARCHIVED` first (409 `CONFLICT` otherwise); its bookings, past ones included, are then deleted with it |
 | PUT | `/api/admin/rooms/{id}/access/{organizationId}` | `{ permission }` sets the organization's override; `{ permission: null }` removes it |
-| POST | `/api/public/requests` | **No login** (CSRF still required). Booking request for a common area of Studentvillaen from the public form `/soknad`: `{ email, organizationName, eventName (max 80), memberOfKulturstyretOrSamfunnet, preferredArea (FESTPLASSEN, TORGALLMENNINGEN or NO_PREFERENCE), start, end, description, needsVillaGuard }`. 204. Start in the future and at most 180 days ahead, end after start, at most 24 h. Nginx allows 10 a minute per address (burst 5). |
-| GET | `/api/admin/public-requests` | Admin only. All public requests, newest first, with `status` (`NEW`/`TRANSFERRED`/`REJECTED`) and `bookingId` |
+| GET | `/api/public/rooms` | **No login.** The rooms the public form offers: active and `publicRequestable`. `[{ id, name, description, capacity, openingHours }]`; no bookings or availability. |
+| POST | `/api/public/requests` | **No login** (CSRF still required). Booking request for a common area of Studentvillaen from the public form `/soknad`: `{ email, organizationName, eventName (max 80), memberOfKulturstyretOrSamfunnet, preferredRoomId (a room from `/api/public/rooms`, or null for no preference), start, end, description, contacts: [{ name, organization, cardNumber, phone }] }` with 1–10 contacts (card number: the UiB card's, 4–20 digits; phone: 8–15 digits, optional +; spaces and hyphens removed). 204. Start in the future and at most 180 days ahead, end after start, at most 22 h, not overlapping 05:00–07:00, and within the chosen room's opening hours. Nginx allows 10 a minute per address (burst 5). |
+| GET | `/api/admin/public-requests` | Admin only. All public requests, newest first, with `status` (`NEW`/`TRANSFERRED`/`REJECTED`), `bookingId`, `preferredRoomId`/`preferredRoomName` (the name is kept if the room is deleted) and `contacts` |
 | GET | `/api/admin/public-requests/count` | Admin only. `{ count }`: the unhandled (`NEW`) requests, for the badge |
 | POST | `/api/admin/public-requests/{id}/reject` | Admin only. `NEW` → `REJECTED` (409 `INVALID_STATE` if already handled) |
 | POST | `/api/admin/public-requests/{id}/booking` | Admin only. Body as `POST /api/bookings`; any active organization, with no membership or room access needed; the booking is always `APPROVED` and no access is granted. Closed rooms are refused. Creates the booking with the normal rules (permission decides `APPROVED`/`PENDING`, conflicts refused) and marks the request `TRANSFERRED` with the booking id, in one transaction: a refused booking leaves it `NEW`. 201 with the booking. |
@@ -145,6 +146,7 @@ Errors are RFC 9457 Problem Details with a stable `code` (and, for series confli
   - No bookings in the past.
   - Max 12 hours per booking.
   - No room between 05:00 and 07:00 local time (`ClosedHours`): a booking may end at 05:00 or start at 07:00. Also checked for public requests and admin bookings on behalf.
+  - Opening hours per room (`room_opening_hours`, `OpeningHours`): with hours set, a booking must lie within the interval of the weekday it starts on (so it ends by 24:00 at the latest); days without hours are closed. Checked for new bookings, moves, series, approvals and admin bookings on behalf. Existing bookings are kept when hours change.
   - Max 180 days ahead.
   - Title up to 80 characters, description up to 500.
 - **Double booking** is prevented by the PostgreSQL exclusion constraint `bookings_no_overlap` on approved bookings. It holds under concurrent requests. The service's pre-check only provides the friendly error message.

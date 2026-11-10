@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.UUID;
 import no.vtvest.booking.organization.MembershipRole;
 import no.vtvest.booking.organization.OrganizationStatus;
+import no.vtvest.booking.room.OpeningHours;
 import no.vtvest.booking.room.Permission;
 import no.vtvest.booking.room.RoomStatus;
 import no.vtvest.booking.user.GlobalRole;
@@ -86,7 +87,11 @@ final class AdminDtos {
             /** Per-organization overrides of the default. */
             List<RoomAccessEntry> access,
             /** All bookings in the room, past and cancelled ones included: what deleting it would remove. */
-            int bookingCount) {}
+            int bookingCount,
+            /** Offered in the public request form (/soknad). */
+            boolean publicRequestable,
+            /** Empty: open around the clock (apart from 05:00–07:00). */
+            List<OpeningHours.Entry> openingHours) {}
 
     record RoomFields(
             @NotBlank @Size(max = 80) String name,
@@ -98,7 +103,11 @@ final class AdminDtos {
             /** Ignored on create (always ACTIVE). */
             RoomStatus status,
             /** With status DISABLED or ARCHIVED: also cancel the room's future bookings. Ignored otherwise. */
-            Boolean cancelFutureBookings) {}
+            Boolean cancelFutureBookings,
+            /** Offered in the public request form. Null: false on create, unchanged on update. */
+            Boolean publicRequestable,
+            /** At most one per weekday. Null: none on create, unchanged on update. Empty: always open. */
+            List<OpeningHours.Entry> openingHours) {}
 
     /** {@code permission: null} removes the override, so the room's default applies. */
     record SetRoomAccess(Permission permission) {}

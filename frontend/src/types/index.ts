@@ -30,6 +30,15 @@ export interface User {
   orgAdminOrganizationIds?: string[]
 }
 
+export type Weekday = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY'
+
+/** One weekday's opening hours in local time, "HH:MM"; `closes` "24:00" is midnight. */
+export interface OpeningHoursEntry {
+  day: Weekday
+  opens: string
+  closes: string
+}
+
 export interface Room {
   id: string
   name: string
@@ -43,6 +52,8 @@ export interface Room {
   color: string
   /** Booking permission per organization id (the `room_access` table). Missing entries mean NONE. */
   permissions: Record<string, Permission>
+  /** Empty or missing: open around the clock (apart from 05:00–07:00). */
+  openingHours?: OpeningHoursEntry[]
 }
 
 export interface Booking {

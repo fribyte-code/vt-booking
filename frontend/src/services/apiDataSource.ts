@@ -4,6 +4,7 @@ import type {
   BookingStatus,
   Invitation,
   OccurrenceSlot,
+  OpeningHoursEntry,
   Organization,
   Permission,
   Room,
@@ -34,6 +35,7 @@ interface RoomResponse {
   color: string
   status: 'ACTIVE' | 'DISABLED'
   permissions: { organizationId: string; permission: Permission }[]
+  openingHours: OpeningHoursEntry[]
 }
 
 interface BookingResponse {
@@ -98,6 +100,7 @@ function toRoom(r: RoomResponse): Room {
     color: r.color,
     status: r.status,
     permissions: Object.fromEntries(r.permissions.map((p) => [p.organizationId, p.permission])),
+    openingHours: r.openingHours ?? [],
   }
 }
 

@@ -24,6 +24,8 @@ import no.vtvest.booking.organization.MembershipRole;
 import no.vtvest.booking.organization.Organization;
 import no.vtvest.booking.organization.OrganizationRepository;
 import no.vtvest.booking.room.Permission;
+import no.vtvest.booking.room.OpeningHours;
+import no.vtvest.booking.room.OpeningHoursRepository;
 import no.vtvest.booking.room.Room;
 import no.vtvest.booking.room.RoomRepository;
 import no.vtvest.booking.room.RoomService;
@@ -62,6 +64,7 @@ public class BookingService {
     private final UserRepository users;
     private final Clock clock;
     private final ZoneId zone;
+    private final OpeningHoursRepository openingHours;
 
     BookingService(
             BookingRepository bookings,
@@ -71,7 +74,8 @@ public class BookingService {
             MembershipRepository memberships,
             UserRepository users,
             Clock clock,
-            ZoneId zone) {
+            ZoneId zone,
+            OpeningHoursRepository openingHours) {
         this.bookings = bookings;
         this.rooms = rooms;
         this.roomService = roomService;
@@ -80,6 +84,7 @@ public class BookingService {
         this.users = users;
         this.clock = clock;
         this.zone = zone;
+        this.openingHours = openingHours;
     }
 
     @Transactional
@@ -112,6 +117,7 @@ public class BookingService {
                 : organizations.findByIdForBooking(request.organizationId())
                         .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Organisasjonen finnes ikke."));
         Room room = lockBookableRoom(request.roomId());
+        requireOpen(room, start, end);
         Permission permission = requireMembership ? requirePermission(room, organization) : permissionOnBehalf(room, organization);
 
         // Requests for an already confirmed slot are refused too, as in the prototype. The room
@@ -170,6 +176,7 @@ public class BookingService {
         Map<UUID, Room> locked = lockRooms(List.of(booking.getRoomId(), request.roomId()));
         requireMovableFrom(locked.get(booking.getRoomId()));
         Room room = requireMoveTarget(locked, request.roomId());
+        requireOpen(room, start, end);
         Permission permission = requirePermission(room, organization);
         if (bookings.existsOtherApprovedOverlap(room.getId(), start, end, booking.getId())) {
             throw conflict(room);
@@ -295,6 +302,18 @@ public class BookingService {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Rommet finnes ikke."));
     }
 
+    /**
+     * The room's opening hours; none means always open. Writes hold the room row's lock, and
+     * changing the hours updates that row, so they can't change under a booking being written.
+     */
+    List<OpeningHours.Interval> openingHoursOf(Room room) {
+        return openingHours.forRoom(room.getId());
+    }
+
+    void requireOpen(Room room, Instant start, Instant end) {
+        OpeningHours.require(room.getName(), openingHoursOf(room), start, end, zone);
+    }
+
     /** As {@link #lockBookableRoom}, without the lock, for previews. */
     Room findBookableRoom(UUID roomId) {
         return rooms.findById(roomId)
@@ -399,6 +418,11 @@ public class BookingService {
             return new ApiException(
                     ErrorCode.NO_PERMISSION,
                     organization.getName() + " har ikke lenger tilgang til å booke " + room.getName() + ".");
+        }
+        List<OpeningHours.Interval> hours = openingHoursOf(room);
+        if (!OpeningHours.allows(hours, booking.getStartAt(), booking.getEndAt(), zone)) {
+            return new ApiException(ErrorCode.RULE_VIOLATION,
+                    room.getName() + " er bare åpent " + OpeningHours.describe(hours) + ". Flytt søknaden før den godkjennes.");
         }
         if (bookings.existsOtherApprovedOverlap(room.getId(), booking.getStartAt(), booking.getEndAt(), booking.getId())) {
             return conflict(room);

@@ -19,9 +19,10 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Booking requests from the public form. {@code POST /api/public/requests} is the only endpoint
- * that works without logging in (see SecurityConfig); it answers 204 and returns nothing, so the
- * sender learns nothing about other requests. The rest is for system admins.
+ * Booking requests from the public form. {@code POST /api/public/requests} and
+ * {@code GET /api/public/rooms} work without logging in (see SecurityConfig). Submitting answers
+ * 204 and returns nothing, so the sender learns nothing about other requests; the room list has
+ * only what the form shows. The rest is for system admins.
  */
 @RestController
 class PublicRequestController {
@@ -38,6 +39,12 @@ class PublicRequestController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void submit(@Valid @RequestBody SubmitPublicRequest body) {
         requests.submit(body);
+    }
+
+    /** The rooms the form offers, with opening hours. No bookings or availability. */
+    @GetMapping("/api/public/rooms")
+    List<PublicRoom> rooms() {
+        return requests.rooms();
     }
 
     @GetMapping("/api/admin/public-requests")
