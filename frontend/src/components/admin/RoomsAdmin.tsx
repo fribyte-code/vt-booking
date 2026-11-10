@@ -317,6 +317,7 @@ function RoomDialog({
             </Field>
           )}
         </div>
+        {room && <RoomLifecycleHelp bookingCount={room.bookingCount} />}
         <Field
           label="Forvaltes av"
           htmlFor={`${id}-manager`}
@@ -353,5 +354,39 @@ function RoomDialog({
         {error && <Alert tone="error">{error}</Alert>}
       </div>
     </Modal>
+  )
+}
+
+/** What closing, archiving and deleting a room do to its bookings, in the room dialog. */
+function RoomLifecycleHelp({ bookingCount }: { bookingCount: number }) {
+  return (
+    <details className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600 ring-1 ring-slate-200 ring-inset">
+      <summary className="cursor-pointer font-medium text-slate-700">Hva skjer med bookingene om jeg stenger, arkiverer eller sletter?</summary>
+      <dl className="mt-2 space-y-2">
+        <div>
+          <dt className="font-medium text-slate-800">Stenge</dt>
+          <dd>
+            Rommet vises fortsatt, men kan ikke bookes eller få nye søknader. Du velger om fremtidige bookinger og søknader skal
+            kanselleres eller beholdes. Ingenting slettes, og rommet kan åpnes igjen.
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium text-slate-800">Arkivere</dt>
+          <dd>
+            Rommet skjules og kan ikke bookes. Du velger om fremtidige bookinger skal kanselleres. De som beholdes, og alle tidligere
+            bookinger, vises fortsatt, men kan bare få ny tittel eller beskrivelse eller kanselleres. Ingenting slettes.
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium text-slate-800">Slette</dt>
+          <dd>
+            Fjerner rommet og tilgangene for godt.{' '}
+            {bookingCount === 0
+              ? 'Rommet har aldri hatt bookinger, så det kan slettes direkte.'
+              : `Rommet har ${bookingCount} ${bookingCount === 1 ? 'booking' : 'bookinger'}, så det må arkiveres først. Da slettes alle bookingene med det, også tidligere, og forespørsler som var booket i rommet, går tilbake til «Under arbeid». Det kan ikke angres.`}
+          </dd>
+        </div>
+      </dl>
+    </details>
   )
 }
