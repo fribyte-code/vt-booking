@@ -85,7 +85,7 @@ Organization admins can add members (a new email creates an account; an existing
 
 ## 7. Data model
 
-Tables: `users`, `organizations`, `memberships`, `membership_invitations`, `rooms`, `room_access`, `room_opening_hours`, `bookings`, `public_requests` (requests for Studentvillaen's common areas from the public form `/soknad`, naming one of the rooms marked `rooms.public_requestable` or none, handled by a SYSTEM_ADMIN in Administrasjon → Forespørsler), `public_request_contacts` (1–10 responsible persons per request). Migrations are in `backend/src/main/resources/db/migration` (Flyway; applied migrations are never edited). There is no audit log or session table.
+Tables: `users`, `organizations`, `memberships`, `membership_invitations`, `rooms`, `room_access`, `room_opening_hours`, `bookings`, `public_requests` (requests for Studentvillaen's common areas from the public form `/soknad`, naming one of the rooms marked `rooms.public_requestable` or none, handled by a SYSTEM_ADMIN in Administrasjon → Forespørsler; a linked booking is the truth for time and room, edits of the request update it, and a trigger (V11) releases the request when the booking is cancelled or deleted), `public_request_contacts` (1–10 responsible persons per request). Migrations are in `backend/src/main/resources/db/migration` (Flyway; applied migrations are never edited). There is no audit log or session table.
 
 Integrity in the schema:
 
