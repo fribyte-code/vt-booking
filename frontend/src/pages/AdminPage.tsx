@@ -53,9 +53,9 @@ export function AdminPage() {
           value={tab}
           onChange={setTab}
           tabs={[
-            { id: 'pending', label: 'Ventende søknader', count: pending.length },
+            { id: 'pending', label: 'Ventende søknader', count: pending.length, hint: 'Villaorganisasjonene' },
             { id: 'processed', label: 'Behandlet', count: processed.length },
-            { id: 'public', label: 'Forespørsler', count: app.data.newPublicRequests || undefined },
+            { id: 'public', label: 'Forespørsler', count: app.data.newPublicRequests || undefined, hint: 'Eksterne, via /soknad' },
             { id: 'night', label: 'Natt', count: app.data.nightWithoutGuards || undefined },
             { id: 'users', label: 'Brukere' },
             { id: 'organizations', label: 'Organisasjoner' },
@@ -65,14 +65,7 @@ export function AdminPage() {
 
         <div className="mt-5">
           {(tab === 'pending' || tab === 'processed') && (
-            <div className="space-y-5">
-              <p className="text-sm text-slate-500">
-                {tab === 'pending'
-                  ? 'Søknader fra villaorganisasjonene, som booker selv i systemet og må få godkjent rom de bare kan søke om. Eksterne sender forespørsler (egen fane).'
-                  : 'Søknader fra villaorganisasjonene som er godkjent eller avslått. Eksterne sender forespørsler (egen fane).'}
-              </p>
-              <RequestQueue view={tab} filter={filter} onFilterChange={setFilter} showManager />
-            </div>
+            <RequestQueue view={tab} filter={filter} onFilterChange={setFilter} showManager />
           )}
           <Suspense fallback={<p className="text-sm text-slate-500">Laster …</p>}>
             {tab === 'public' && <PublicRequestsAdmin />}
