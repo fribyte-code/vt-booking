@@ -23,7 +23,8 @@ import org.testcontainers.images.builder.Transferable;
 /**
  * The client address the login throttle sees, through the real chain: the production
  * {@code frontend/nginx.conf} in the production Nginx image, in front of this application with
- * Tomcat's forwarded-header handling. Only the upstream address in the config is replaced. The
+ * Tomcat's forwarded-header handling. Only the upstream address in the config is replaced, and
+ * the login rate limit removed (see {@link #nginx}). The
  * trusted-proxy settings use {@code frontend/real-ip.conf.template} with the same environment
  * variables as {@code compose.prod.yaml}.
  *
@@ -96,6 +97,11 @@ class ProxyClientAddressIntegrationTest {
         String original = Files.readString(Path.of("../frontend/nginx.conf"));
         String conf = original.replace("http://backend:8080", "http://host.testcontainers.internal:" + port);
         assertThat(conf).isNotEqualTo(original);
+        // Nginx's own login rate limit would answer 429 before the API's throttle is reached, and
+        // this test is about the address the API sees, so the limit is left out here.
+        String rateLimit = "limit_req zone=login burst=10 nodelay;";
+        assertThat(conf).contains(rateLimit);
+        conf = conf.replace(rateLimit, "");
 
         GenericContainer<?> nginx = new GenericContainer<>(NGINX_IMAGE)
                 .withCopyToContainer(Transferable.of(conf), "/etc/nginx/conf.d/default.conf")

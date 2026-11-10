@@ -17,4 +17,7 @@ USER app
 WORKDIR /app
 COPY --from=build /src/app.jar app.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+# Heap: half of the memory the container sees (the JVM's default is a quarter), room for the
+# Argon2id hashes of concurrent logins (19 MiB each). If the heap still runs out, the JVM exits
+# instead of running on with dead threads, so Docker's restart policy brings it back.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=50", "-XX:+ExitOnOutOfMemoryError", "-jar", "/app/app.jar"]
