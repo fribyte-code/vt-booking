@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { Organization, Room } from '../types'
 import type { PublicRequest } from './adminApi'
-import { bookingDescription, contactProblem, organizationsForRequest, replyMailto, requestedRoom } from './publicRequests'
+import {
+  bookingDescription,
+  contactFieldProblems,
+  contactProblem,
+  formatPhone,
+  listNorwegian,
+  missingContactFields,
+  organizationsForRequest,
+  replyMailto,
+  requestedRoom,
+} from './publicRequests'
 
 const room = (id: string, name: string) => ({ id, name }) as Room
 const rooms = [room('1', 'Studentvillaen – kjeller'), room('2', ' festplassen '), room('3', 'Torgallmenningen')]
@@ -120,5 +130,40 @@ describe('bookingDescription', () => {
     expect(text.length).toBeLessThanOrEqual(500)
     expect(text).toContain('Ønsket rom: Ingen preferanse')
     expect(text).toContain('- Person 2 (Org), kortnr. 12345678, tlf. 91234567')
+  })
+})
+
+describe('form messages', () => {
+  const empty = { name: '', organization: '', cardNumber: '', phone: '' }
+  const filled = { name: 'Kari', organization: 'Jazzklubben', cardNumber: '12345678', phone: '91234567' }
+
+  it('names the missing contact fields per person', () => {
+    expect(missingContactFields([filled, { ...empty, name: 'Ola' }])).toEqual([
+      'organisasjon for person 2',
+      'kortnummer for person 2',
+      'telefonnummer for person 2',
+    ])
+  })
+
+  it('marks exactly the fields that are missing or invalid', () => {
+    expect(contactFieldProblems({ ...filled, cardNumber: 's123456' })).toEqual({
+      name: false,
+      organization: false,
+      cardNumber: true,
+      phone: false,
+    })
+    expect(contactFieldProblems({ ...filled, phone: '112' }).phone).toBe(true)
+  })
+
+  it('joins lists the Norwegian way', () => {
+    expect(listNorwegian(['dato'])).toBe('dato')
+    expect(listNorwegian(['dato', 'beskrivelse'])).toBe('dato og beskrivelse')
+    expect(listNorwegian(['a', 'b', 'c'])).toBe('a, b og c')
+  })
+
+  it('groups Norwegian phone numbers and leaves others as they are', () => {
+    expect(formatPhone('+4791234567')).toBe('+47 912 34 567')
+    expect(formatPhone('91234567')).toBe('912 34 567')
+    expect(formatPhone('+46701234567')).toBe('+46701234567')
   })
 })

@@ -45,6 +45,23 @@ export const emptyContact = (): PublicRequestContact => ({ name: '', organizatio
 
 const compact = (value: string) => value.replace(/[\s-]/g, '')
 
+const CARD_NUMBER = /^[0-9]{4,20}$/
+const PHONE = /^\+?[0-9]{8,15}$/
+
+/** Card number and phone in the backend's format: digits only (phone optionally with + first). */
+export const validCardNumber = (value: string) => CARD_NUMBER.test(compact(value))
+export const validPhone = (value: string) => PHONE.test(compact(value))
+
+/** Which of a contact person's fields are missing or invalid, so the form can mark exactly those. */
+export function contactFieldProblems(c: PublicRequestContact): Record<keyof PublicRequestContact, boolean> {
+  return {
+    name: !c.name.trim(),
+    organization: !c.organization.trim(),
+    cardNumber: !validCardNumber(c.cardNumber),
+    phone: !validPhone(c.phone),
+  }
+}
+
 /**
  * Why a contact person can't be sent, or null. Same rules as the backend: everything filled in, a
  * card number of 4–20 digits (the UiB card number, not the student number) and a phone number of
@@ -54,13 +71,40 @@ export function contactProblem(c: PublicRequestContact): string | null {
   if (!c.name.trim() || !c.organization.trim() || !c.cardNumber.trim() || !c.phone.trim()) {
     return 'Fyll ut navn, organisasjon, kortnummer og telefonnummer.'
   }
-  if (!/^[0-9]{4,20}$/.test(compact(c.cardNumber))) {
+  if (!validCardNumber(c.cardNumber)) {
     return 'Kortnummeret skal bare ha sifre. Bruk nummeret på UiB-kortet, ikke studentnummeret.'
   }
-  if (!/^\+?[0-9]{8,15}$/.test(compact(c.phone))) {
+  if (!validPhone(c.phone)) {
     return 'Telefonnummeret må ha 8–15 sifre, eventuelt med + foran.'
   }
   return null
+}
+
+const contactLabels: Record<keyof PublicRequestContact, string> = {
+  name: 'navn',
+  organization: 'organisasjon',
+  cardNumber: 'kortnummer',
+  phone: 'telefonnummer',
+}
+
+/** The empty fields of the contact persons, named for the form's error message ("kortnummer for person 2"). */
+export function missingContactFields(contacts: PublicRequestContact[]): string[] {
+  return contacts.flatMap((c, i) =>
+    (Object.keys(contactLabels) as (keyof PublicRequestContact)[])
+      .filter((field) => !c[field].trim())
+      .map((field) => `${contactLabels[field]} for person ${i + 1}`),
+  )
+}
+
+/** "a", "a og b", "a, b og c". */
+export function listNorwegian(items: string[]): string {
+  return items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} og ${items[items.length - 1]}`
+}
+
+/** A Norwegian phone number grouped for reading: "+47 912 34 567", "912 34 567"; anything else as given. */
+export function formatPhone(phone: string): string {
+  const m = /^(\+47)?(\d{3})(\d{2})(\d{3})$/.exec(compact(phone))
+  return m ? [m[1], m[2], m[3], m[4]].filter(Boolean).join(' ') : phone
 }
 
 /** The shared organization for public requests (created by migration V7), matched by name. */

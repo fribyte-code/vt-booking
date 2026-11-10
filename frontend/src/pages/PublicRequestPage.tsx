@@ -1,5 +1,6 @@
 import { CalendarRange, Moon, Plus, Send, ShieldCheck, Trash2 } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Button } from '../components/ui/Button'
 import { Alert, Field, Input, Textarea } from '../components/ui/fields'
 import { cn } from '../lib/cn'
@@ -8,7 +9,16 @@ import { errorMessage } from '../lib/errors'
 import type { PublicRequestContact } from '../services/adminApi'
 import { createApiClient } from '../services/apiClient'
 import { CLOSED_HOURS_MESSAGE, describeOpeningHours, openingHoursMessage, overlapsClosedHours, withinOpeningHours } from '../services/bookingRules'
-import { contactProblem, emptyContact, MAX_CONTACTS, PUBLIC_REQUEST_MAX_HOURS, type PublicRoom } from '../services/publicRequests'
+import {
+  contactFieldProblems,
+  contactProblem,
+  emptyContact,
+  listNorwegian,
+  MAX_CONTACTS,
+  missingContactFields,
+  PUBLIC_REQUEST_MAX_HOURS,
+  type PublicRoom,
+} from '../services/publicRequests'
 
 const api = createApiClient()
 
@@ -32,7 +42,7 @@ const TEXT = {
   contacts:
     'Hvem er ansvarlige under arrangementet? Oppgi minst én person. Bruk kortnummeret på UiB-kortet, ikke studentnummeret.',
   villaGuard: 'Alle arrangementer må ha villavakt.',
-  villaGuardNight: 'Arrangementet går over midnatt. Da er villavakt ekstra viktig, og det trengs i tillegg vektere.',
+  villaGuardNight: 'Da er villavakt ekstra viktig, og det trengs i tillegg vektere.',
   confirmation:
     'Takk! Forespørselen er sendt. Vi behandler den så snart vi kan og svarer på e-post. ' +
     'Forespørselen er ikke en bekreftet booking før du har fått svar.',
@@ -88,7 +98,8 @@ export function PublicRequestPage() {
   const [contacts, setContacts] = useState<PublicRequestContact[]>(() => [emptyContact()])
   const [submitted, setSubmitted] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // The server's answer to the request as sent: shown only while the form is unchanged.
+  const [serverError, setServerError] = useState<{ message: string; sent: string } | null>(null)
   const [sent, setSent] = useState(false)
   const errorRef = useRef<HTMLDivElement>(null)
 
@@ -98,11 +109,6 @@ export function PublicRequestPage() {
       .then(setRooms)
       .catch(() => setRoomsError(true))
   }, [])
-
-  // The error is shown at the top of the form: bring it into view, wherever the button was.
-  useEffect(() => {
-    if (error) errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [error])
 
   const start = combineDateTime(date, startTime)
   const end = combineEnd(date, startTime, endTime)
@@ -122,49 +128,71 @@ export function PublicRequestPage() {
   const setContact = (i: number, patch: Partial<PublicRequestContact>) =>
     setContacts((cs) => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)))
 
+  // The first thing that stops the form, worked out from what is filled in now: once it is
+  // fixed, the message goes away (or names the next problem).
+  const missingFields = [
+    !email.trim() && 'e-postadresse',
+    !organizationName.trim() && 'organisasjonsnavn',
+    !eventName.trim() && 'arrangementets navn',
+    member === null && 'om dere er medlem av Kulturstyret eller Studentersamfunnet',
+    roomId === null && 'rom (eller ingen preferanse)',
+    !date && 'dato',
+    !startTime && 'starttidspunkt',
+    !endTime && 'sluttidspunkt',
+    !description.trim() && 'beskrivelse',
+    ...missingContactFields(contacts),
+  ].filter((f): f is string => !!f)
+  const contactError = contacts
+    .map((c, i) => {
+      const problem = contactProblem(c)
+      return problem && (contacts.length > 1 ? `Person ${i + 1}: ${problem}` : problem)
+    })
+    .find((p) => p)
+  const formProblem = missingFields.length
+    ? `Fyll ut ${listNorwegian(missingFields)}.`
+    : // An end time at or before the start time means the next day, so equal times would be 24 hours.
+      startTime === endTime
+      ? 'Starttidspunkt og sluttidspunkt kan ikke være like.'
+      : (timeProblem ?? contactError ?? null)
+
+  const payload = {
+    email: email.trim(),
+    organizationName: organizationName.trim(),
+    eventName: eventName.trim(),
+    memberOfKulturstyretOrSamfunnet: member,
+    preferredRoomId: roomId || null,
+    start,
+    end,
+    description: description.trim(),
+    contacts: contacts.map((c) => ({
+      name: c.name.trim(),
+      organization: c.organization.trim(),
+      cardNumber: c.cardNumber.trim(),
+      phone: c.phone.trim(),
+    })),
+  }
+  const payloadKey = JSON.stringify(payload)
+  const error = submitted
+    ? (formProblem ?? (serverError?.sent === payloadKey ? serverError.message : null))
+    : null
+
+  // The error is shown at the top of the form: bring it into view, wherever the button was.
+  const showError = () => errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    setSubmitted(true)
-    setError(null)
-    if (!email.trim() || !organizationName.trim() || !eventName.trim() || !description.trim() || !start || !end || member === null || roomId === null) {
-      setError('Fyll ut alle feltene.')
-      return
-    }
-    // An end time at or before the start time means the next day, so equal times would be 24 hours.
-    if (startTime === endTime) {
-      setError('Starttidspunkt og sluttidspunkt kan ikke være like.')
-      return
-    }
-    if (timeProblem) {
-      setError(timeProblem)
-      return
-    }
-    const contactError = contacts.map(contactProblem).find((p) => p !== null)
-    if (contactError) {
-      setError(contactError)
+    flushSync(() => setSubmitted(true))
+    if (formProblem) {
+      showError()
       return
     }
     setBusy(true)
     try {
-      await api.send('POST', '/api/public/requests', {
-        email: email.trim(),
-        organizationName: organizationName.trim(),
-        eventName: eventName.trim(),
-        memberOfKulturstyretOrSamfunnet: member,
-        preferredRoomId: roomId || null,
-        start,
-        end,
-        description: description.trim(),
-        contacts: contacts.map((c) => ({
-          name: c.name.trim(),
-          organization: c.organization.trim(),
-          cardNumber: c.cardNumber.trim(),
-          phone: c.phone.trim(),
-        })),
-      })
+      await api.send('POST', '/api/public/requests', payload)
       setSent(true)
     } catch (err) {
-      setError(errorMessage(err))
+      flushSync(() => setServerError({ message: errorMessage(err), sent: payloadKey }))
+      showError()
     } finally {
       setBusy(false)
     }
@@ -339,7 +367,7 @@ export function PublicRequestPage() {
                     <strong className="font-semibold">
                       {formatDate(end)} kl. {endTime}
                     </strong>
-                    .
+                    . {TEXT.villaGuardNight}
                   </span>
                 </div>
               ) : (
@@ -370,7 +398,7 @@ export function PublicRequestPage() {
                   key={i}
                   index={i}
                   contact={c}
-                  invalid={submitted && contactProblem(c) !== null}
+                  showErrors={submitted}
                   onChange={(patch) => setContact(i, patch)}
                   onRemove={contacts.length > 1 ? () => setContacts((cs) => cs.filter((_, j) => j !== i)) : undefined}
                 />
@@ -384,10 +412,7 @@ export function PublicRequestPage() {
 
             <div className="flex items-start gap-2.5 rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-700 ring-1 ring-inset ring-slate-200">
               <ShieldCheck className="mt-0.5 size-4 shrink-0" />
-              <div>
-                <p className="font-medium text-slate-900">{TEXT.villaGuard}</p>
-                {overnight && <p className="mt-1 font-medium text-indigo-900">{TEXT.villaGuardNight}</p>}
-              </div>
+              <p className="font-medium text-slate-900">{TEXT.villaGuard}</p>
             </div>
 
             <Button type="submit" variant="primary" className="w-full sm:w-auto" disabled={busy}>
@@ -406,20 +431,22 @@ export function PublicRequestPage() {
 function ContactFields({
   index,
   contact,
-  invalid,
+  showErrors,
   onChange,
   onRemove,
 }: {
   index: number
   contact: PublicRequestContact
-  invalid: boolean
+  /** After the first submit: mark the fields that are missing or invalid. */
+  showErrors: boolean
   onChange: (patch: Partial<PublicRequestContact>) => void
   onRemove?: () => void
 }) {
   const id = useId()
-  const ring = (value: string) => cn(invalid && !value.trim() && 'ring-red-400')
+  const problems = contactFieldProblems(contact)
+  const invalid = (field: keyof PublicRequestContact) => showErrors && problems[field]
   return (
-    <div className={cn('space-y-3 rounded-xl p-3 ring-1 ring-inset', invalid ? 'ring-red-300' : 'ring-slate-200')}>
+    <div className="space-y-3 rounded-xl p-3 ring-1 ring-slate-200 ring-inset">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-slate-900">Person {index + 1}</span>
         {onRemove && (
@@ -435,7 +462,8 @@ function ContactFields({
             autoComplete="name"
             maxLength={100}
             value={contact.name}
-            className={ring(contact.name)}
+            aria-invalid={invalid('name')}
+            className={cn(invalid('name') && 'ring-red-400')}
             onChange={(e) => onChange({ name: e.target.value })}
           />
         </Field>
@@ -444,7 +472,8 @@ function ContactFields({
             id={`${id}-org`}
             maxLength={120}
             value={contact.organization}
-            className={ring(contact.organization)}
+            aria-invalid={invalid('organization')}
+            className={cn(invalid('organization') && 'ring-red-400')}
             onChange={(e) => onChange({ organization: e.target.value })}
           />
         </Field>
@@ -454,7 +483,8 @@ function ContactFields({
             inputMode="numeric"
             maxLength={30}
             value={contact.cardNumber}
-            className={ring(contact.cardNumber)}
+            aria-invalid={invalid('cardNumber')}
+            className={cn(invalid('cardNumber') && 'ring-red-400')}
             onChange={(e) => onChange({ cardNumber: e.target.value })}
           />
         </Field>
@@ -465,7 +495,8 @@ function ContactFields({
             autoComplete="tel"
             maxLength={30}
             value={contact.phone}
-            className={ring(contact.phone)}
+            aria-invalid={invalid('phone')}
+            className={cn(invalid('phone') && 'ring-red-400')}
             onChange={(e) => onChange({ phone: e.target.value })}
           />
         </Field>
