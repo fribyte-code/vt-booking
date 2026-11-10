@@ -47,7 +47,9 @@ final class PublicRequestDtos {
 
     /**
      * A system admin's edit of a request, at any status: the same fields as the form. The room can
-     * be any room that isn't archived, or null for no preference. The linked booking is not changed.
+     * be any room that isn't archived, or null for no preference. With a booking, the booking is
+     * updated in the same transaction: a new time or room moves it (a room is then required), and a
+     * new event name or new text regenerates its title or description.
      */
     record EditPublicRequest(
             @NotBlank @Size(max = 254) String email,
@@ -60,7 +62,11 @@ final class PublicRequestDtos {
             @NotBlank @Size(max = 2000) String description,
             @NotNull @Size(min = 1, max = MAX_CONTACTS) List<@NotNull @Valid Contact> contacts) {}
 
-    record SetStatus(@NotNull Status status) {}
+    /** {@code cancelBooking}: with REJECTED, also cancel the request's booking. */
+    record SetStatus(@NotNull Status status, Boolean cancelBooking) {}
+
+    /** The booking made from a request: the truth for its time and room, read live. */
+    record LinkedBooking(UUID id, UUID roomId, String roomName, String title, Instant start, Instant end, String status) {}
 
     /** A room the public form offers: active and marked as requestable by an admin. */
     record PublicRoom(UUID id, String name, String description, Integer capacity, List<OpeningHours.Entry> openingHours) {}
@@ -86,6 +92,10 @@ final class PublicRequestDtos {
             Status status,
             Instant createdAt,
             UUID bookingId,
+            /** The linked booking, or null. */
+            LinkedBooking booking,
+            /** When the linked booking was cancelled or deleted (the request let go of it), or null. */
+            Instant bookingRemovedAt,
             /** The last edit or status change by an admin, or null. */
             Instant updatedAt,
             String updatedByName) {}

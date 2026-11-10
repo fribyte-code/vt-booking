@@ -9,15 +9,19 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import no.vtvest.booking.booking.BookingResponse;
 import no.vtvest.booking.booking.BookingService;
+import no.vtvest.booking.booking.CancelBookingRequest;
 import no.vtvest.booking.booking.CreateBookingRequest;
+import no.vtvest.booking.booking.UpdateBookingRequest;
 import no.vtvest.booking.booking.ClosedHours;
 import no.vtvest.booking.common.ApiException;
 import no.vtvest.booking.common.ErrorCode;
@@ -118,12 +122,18 @@ class PublicRequestService {
     /**
      * A system admin corrects a request, at any status (also after it is handled). The same rules
      * as the form apply, except that the time may have passed and any room that isn't archived can
-     * be chosen; opening hours are left to the booking. A booking made from it is not changed.
+     * be chosen; opening hours are left to the booking. A request with a booking updates the
+     * booking in the same transaction ({@link #syncBooking}): if the booking refuses the change,
+     * nothing is saved.
      */
     @Transactional
     PublicRequest update(User actor, UUID id, EditPublicRequest body) {
         requireSystemAdmin(actor);
         lock(id);
+        PublicRequest before = find(id);
+        if (before.bookingId() != null && body.preferredRoomId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION, "Forespørselen har en booking, så den må ha et rom.");
+        }
         Instant start = body.start().toInstant();
         Instant end = body.end().toInstant();
         validateTimes(start, end);
@@ -154,14 +164,83 @@ class PublicRequestService {
                 id);
         jdbc.update("DELETE FROM public_request_contacts WHERE request_id = ?", id);
         insertContacts(id, contacts);
+        if (before.bookingId() != null) {
+            syncBooking(actor, before, find(id));
+        }
         return find(id);
     }
 
-    /** A system admin sets the handling status, to any of the four, e.g. "under arbeid" or "ferdig" outside the system. */
+    /**
+     * Brings the booking in line with an edited request, through {@link BookingService} with all
+     * its rules (conflicts, 05:00–07:00, opening hours, max length, not started). A time or room
+     * different from the booking's moves it; a new event name becomes its title, and a change to
+     * what its description is made from regenerates the description. Otherwise the booking is left
+     * as it is, so a title or description the admin changed in the calendar is kept.
+     */
+    private void syncBooking(User actor, PublicRequest before, PublicRequest after) {
+        BookingResponse booking = bookingService.get(actor, before.bookingId());
+        boolean moved = !after.preferredRoomId().equals(booking.roomId())
+                || !after.start().equals(booking.start())
+                || !after.end().equals(booking.end());
+        String title = after.eventName().equals(before.eventName()) ? booking.title() : after.eventName();
+        String text = bookingDescription(after);
+        String description = text.equals(bookingDescription(before)) ? booking.description() : text;
+        if (!moved && title.equals(booking.title()) && Objects.equals(description, booking.description())) {
+            return;
+        }
+        bookingService.updateOnBehalf(actor, booking.id(), new UpdateBookingRequest(
+                booking.version(),
+                after.preferredRoomId(),
+                title,
+                description,
+                after.start().atOffset(ZoneOffset.UTC),
+                after.end().atOffset(ZoneOffset.UTC)));
+    }
+
+    /** Bookings allow 500 characters (as {@code bookingDescription} in the frontend). */
+    private static final int BOOKING_DESCRIPTION_MAX = 500;
+
+    /**
+     * The booking's description made from a request: the applicant's description first, then the
+     * facts the booking should carry; the description is cut first. The same text as
+     * {@code bookingDescription} in the frontend, which prefills the booking dialog.
+     */
+    static String bookingDescription(PublicRequest r) {
+        List<String> facts = new ArrayList<>(List.of(
+                "Kontakt: " + r.email(),
+                "Ønsket rom: " + (r.preferredRoomName() == null ? "Ingen preferanse" : r.preferredRoomName()),
+                "Medlem av Kulturstyret eller Studentersamfunnet: " + (r.memberOfKulturstyretOrSamfunnet() ? "Ja" : "Nei")));
+        if (!r.contacts().isEmpty()) {
+            facts.add("Ansvarlige:");
+            r.contacts().forEach(c -> facts.add("- %s (%s), kortnr. %s, tlf. %s"
+                    .formatted(c.name(), c.organization(), c.cardNumber(), c.phone())));
+        }
+        String joined = String.join("\n", facts);
+        int room = Math.max(0, BOOKING_DESCRIPTION_MAX - joined.length() - 2);
+        String text = r.description().substring(0, Math.min(room, r.description().length())) + "\n\n" + joined;
+        return text.substring(0, Math.min(BOOKING_DESCRIPTION_MAX, text.length()));
+    }
+
+    /**
+     * A system admin sets the handling status, to any of the four, e.g. "under arbeid" or "ferdig"
+     * outside the system. Rejecting can also cancel the request's booking ({@code cancelBooking});
+     * if the booking can't be cancelled (e.g. it has started), nothing is changed.
+     */
     @Transactional
-    PublicRequest setStatus(User actor, UUID id, Status status) {
+    PublicRequest setStatus(User actor, UUID id, Status status, boolean cancelBooking) {
         requireSystemAdmin(actor);
         lock(id);
+        if (cancelBooking) {
+            if (status != Status.REJECTED) {
+                throw new ApiException(ErrorCode.VALIDATION, "Bookingen kan bare kanselleres når forespørselen avslås.");
+            }
+            UUID bookingId = jdbc.queryForObject("SELECT booking_id FROM public_requests WHERE id = ?", UUID.class, id);
+            if (bookingId != null) {
+                BookingResponse booking = bookingService.get(actor, bookingId);
+                // Releases the request (V11): booking_id cleared, booking_removed_at set.
+                bookingService.cancel(actor, bookingId, new CancelBookingRequest(booking.version(), "Forespørselen er avslått."));
+            }
+        }
         jdbc.update("UPDATE public_requests SET status = ?, updated_at = ?, updated_by_id = ? WHERE id = ?",
                 status.name(), Timestamp.from(clock.instant()), actor.getId(), id);
         return find(id);
@@ -234,7 +313,7 @@ class PublicRequestService {
     PublicRequest reject(User actor, UUID id) {
         requireSystemAdmin(actor);
         lockOpen(id);
-        return setStatus(actor, id, Status.REJECTED);
+        return setStatus(actor, id, Status.REJECTED, false);
     }
 
     /**
@@ -249,7 +328,10 @@ class PublicRequestService {
             throw new ApiException(ErrorCode.INVALID_STATE, "Forespørselen har allerede en booking.");
         }
         BookingResponse created = bookingService.createOnBehalf(actor, booking);
-        jdbc.update("UPDATE public_requests SET status = 'DONE', booking_id = ?, updated_at = ?, updated_by_id = ? WHERE id = ?",
+        jdbc.update("""
+                UPDATE public_requests SET status = 'DONE', booking_id = ?, booking_removed_at = NULL, updated_at = ?, updated_by_id = ?
+                WHERE id = ?
+                """,
                 created.id(), Timestamp.from(clock.instant()), actor.getId(), id);
         return created;
     }
@@ -282,10 +364,19 @@ class PublicRequestService {
         return jdbc.queryForObject(REQUESTS + " WHERE p.id = ?", (rs, i) -> toRequest(rs, contacts), id);
     }
 
-    /** With the room's current name, or the name it had when asked for if it has been deleted. */
+    /**
+     * With the room's current name, or the name it had when asked for if it has been deleted, and
+     * the linked booking's current room and time.
+     */
     private static final String REQUESTS = """
-            SELECT p.*, coalesce(r.name, p.preferred_room_name) AS room_name, u.display_name AS updated_by_name
-            FROM public_requests p LEFT JOIN rooms r ON r.id = p.preferred_room_id LEFT JOIN users u ON u.id = p.updated_by_id
+            SELECT p.*, coalesce(r.name, p.preferred_room_name) AS room_name, u.display_name AS updated_by_name,
+                b.room_id AS b_room_id, br.name AS b_room_name, b.title AS b_title, b.start_at AS b_start,
+                b.end_at AS b_end, b.status AS b_status
+            FROM public_requests p
+            LEFT JOIN rooms r ON r.id = p.preferred_room_id
+            LEFT JOIN users u ON u.id = p.updated_by_id
+            LEFT JOIN bookings b ON b.id = p.booking_id
+            LEFT JOIN rooms br ON br.id = b.room_id
             """;
 
     private Map<UUID, List<Contact>> contactsByRequest(String sql, Object... args) {
@@ -298,6 +389,15 @@ class PublicRequestService {
 
     private static PublicRequest toRequest(ResultSet rs, Map<UUID, List<Contact>> contacts) throws SQLException {
         UUID id = rs.getObject("id", UUID.class);
+        UUID bookingId = rs.getObject("booking_id", UUID.class);
+        LinkedBooking booking = bookingId == null ? null : new LinkedBooking(
+                bookingId,
+                rs.getObject("b_room_id", UUID.class),
+                rs.getString("b_room_name"),
+                rs.getString("b_title"),
+                rs.getTimestamp("b_start").toInstant(),
+                rs.getTimestamp("b_end").toInstant(),
+                rs.getString("b_status"));
         return new PublicRequest(
                 id,
                 rs.getString("email"),
@@ -312,7 +412,9 @@ class PublicRequestService {
                 new ArrayList<>(contacts.getOrDefault(id, List.of())),
                 Status.valueOf(rs.getString("status")),
                 rs.getTimestamp("created_at").toInstant(),
-                rs.getObject("booking_id", UUID.class),
+                bookingId,
+                booking,
+                rs.getTimestamp("booking_removed_at") == null ? null : rs.getTimestamp("booking_removed_at").toInstant(),
                 rs.getTimestamp("updated_at") == null ? null : rs.getTimestamp("updated_at").toInstant(),
                 rs.getString("updated_by_name"));
     }

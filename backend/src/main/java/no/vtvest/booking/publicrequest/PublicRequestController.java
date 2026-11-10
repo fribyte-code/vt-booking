@@ -59,16 +59,16 @@ class PublicRequestController {
         return new PublicRequestCount(requests.countNew(currentUser.require()));
     }
 
-    /** Corrects the request, at any status. The booking made from it is not changed. */
+    /** Corrects the request, at any status. A linked booking is updated with it, or nothing is saved. */
     @PutMapping("/api/admin/public-requests/{id}")
     PublicRequest update(@PathVariable UUID id, @Valid @RequestBody EditPublicRequest body) {
         return requests.update(currentUser.require(), id, body);
     }
 
-    /** Sets the handling status: NEW, IN_PROGRESS, DONE or REJECTED. */
+    /** Sets the handling status: NEW, IN_PROGRESS, DONE or REJECTED; rejecting can cancel the booking too. */
     @PutMapping("/api/admin/public-requests/{id}/status")
     PublicRequest setStatus(@PathVariable UUID id, @Valid @RequestBody SetStatus body) {
-        return requests.setStatus(currentUser.require(), id, body.status());
+        return requests.setStatus(currentUser.require(), id, body.status(), Boolean.TRUE.equals(body.cancelBooking()));
     }
 
     @PostMapping("/api/admin/public-requests/{id}/reject")

@@ -138,4 +138,39 @@ class MigrationIntegrationTest extends IntegrationTest {
                 .isInstanceOf(DataIntegrityViolationException.class);
         jdbc.execute("DROP SCHEMA " + schema + " CASCADE");
     }
+
+    @Test
+    void v11ReleasesRequestsWhoseBookingIsGoneAndTheTriggerWorksInTheMigratedSchema() {
+        String schema = "migration_test_v11";
+        jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+        Flyway.configure().dataSource(dataSource).schemas(schema).target("10").load().migrate();
+        jdbc.update("INSERT INTO " + schema + ".users (id, email, display_name) VALUES ('00000000-0000-0000-0000-000000000001', 'a@example.test', 'A')");
+        jdbc.update("INSERT INTO " + schema + ".organizations (id, name) VALUES ('00000000-0000-0000-0000-0000000000aa', 'Org')");
+        jdbc.update("INSERT INTO " + schema + ".rooms (id, name, color) VALUES ('00000000-0000-0000-0000-0000000000bb', 'Rom', '#123456')");
+        String booking = "INSERT INTO " + schema + ".bookings (id, room_id, organization_id, requested_by_id, title, start_at, end_at, status, "
+                + "requires_approval, cancelled_at, cancelled_by_id) VALUES (?::uuid, '00000000-0000-0000-0000-0000000000bb', "
+                + "'00000000-0000-0000-0000-0000000000aa', '00000000-0000-0000-0000-000000000001', 'Fest', "
+                + "now() + interval '1 day', now() + interval '25 hours', ?, false, ?::timestamptz, ?::uuid)";
+        jdbc.update(booking, "00000000-0000-0000-0000-0000000000c1", "CANCELLED", "2026-01-01T00:00:00Z", "00000000-0000-0000-0000-000000000001");
+        jdbc.update(booking, "00000000-0000-0000-0000-0000000000c2", "APPROVED", null, null);
+        String request = "INSERT INTO " + schema + ".public_requests (email, organization_name, event_name, member_of_kulturstyret_or_samfunnet, "
+                + "start_at, end_at, description, status, booking_id) VALUES (?, 'Org', 'Fest', true, now() + interval '1 day', "
+                + "now() + interval '25 hours', 'Fest', 'DONE', ?::uuid)";
+        jdbc.update(request, "a@example.test", "00000000-0000-0000-0000-0000000000c1");
+        jdbc.update(request, "b@example.test", "00000000-0000-0000-0000-0000000000c2");
+
+        Flyway.configure().dataSource(dataSource).schemas(schema).load().migrate();
+
+        assertThat(jdbc.queryForList("SELECT email, status, booking_id IS NULL AS released, booking_removed_at FROM " + schema
+                        + ".public_requests ORDER BY email"))
+                .extracting(row -> row.get("email") + " " + row.get("status") + " " + row.get("released") + " " + (row.get("booking_removed_at") != null))
+                .containsExactly("a@example.test IN_PROGRESS true true", "b@example.test DONE false false");
+
+        // The session's search_path is public here; the trigger still updates the migrated schema.
+        jdbc.update("UPDATE " + schema + ".bookings SET status = 'CANCELLED', cancelled_at = now(), "
+                + "cancelled_by_id = '00000000-0000-0000-0000-000000000001' WHERE id = '00000000-0000-0000-0000-0000000000c2'");
+        assertThat(jdbc.queryForObject("SELECT status FROM " + schema + ".public_requests WHERE email = 'b@example.test'", String.class))
+                .isEqualTo("IN_PROGRESS");
+        jdbc.execute("DROP SCHEMA " + schema + " CASCADE");
+    }
 }

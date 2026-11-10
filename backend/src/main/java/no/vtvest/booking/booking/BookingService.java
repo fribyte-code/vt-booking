@@ -154,6 +154,24 @@ public class BookingService {
      */
     @Transactional
     public BookingResponse update(User actor, UUID id, UpdateBookingRequest request) {
+        return update(actor, id, request, false);
+    }
+
+    /**
+     * A system admin editing a booking made on behalf of an organization, e.g. when the public
+     * request it was made from is edited: like {@link #update}, but a move follows the rules of
+     * {@link #createOnBehalf} (no room access needed, approved directly). Closed rooms, times,
+     * opening hours and conflicts are checked as usual.
+     */
+    @Transactional
+    public BookingResponse updateOnBehalf(User actor, UUID id, UpdateBookingRequest request) {
+        if (!actor.isSystemAdmin()) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "Bare systemadministratorer har tilgang.");
+        }
+        return update(actor, id, request, true);
+    }
+
+    private BookingResponse update(User actor, UUID id, UpdateBookingRequest request, boolean onBehalf) {
         Viewer viewer = viewerOf(actor);
         Booking booking = bookings.findById(id)
                 .filter(b -> viewer.sees(b))
@@ -181,7 +199,7 @@ public class BookingService {
         requireMovableFrom(locked.get(booking.getRoomId()));
         Room room = requireMoveTarget(locked, request.roomId());
         requireOpen(room, start, end);
-        Permission permission = requirePermission(room, organization);
+        Permission permission = onBehalf ? permissionOnBehalf(room, organization) : requirePermission(room, organization);
         if (bookings.existsOtherApprovedOverlap(room.getId(), start, end, booking.getId())) {
             throw conflict(room);
         }
