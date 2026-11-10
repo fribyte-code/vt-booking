@@ -149,7 +149,7 @@ export function createApiClient(
       })
       if (res.status === 401) throw new BookingError('UNAUTHENTICATED', 'Feil e-post eller passord.')
       if (res.status === 429) {
-        throw new BookingError('FORBIDDEN', 'For mange mislykkede forsøk. Vent et kvarter og prøv igjen.')
+        throw new BookingError('FORBIDDEN', 'For mange forsøk. Prøv igjen senere.')
       }
       if (!res.ok) throw await toError(res)
     },

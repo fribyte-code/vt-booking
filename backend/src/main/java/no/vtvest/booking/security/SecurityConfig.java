@@ -17,7 +17,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -69,8 +71,14 @@ class SecurityConfig {
                             response.setStatus(HttpStatus.NO_CONTENT.value());
                         })
                         .failureHandler((request, response, e) -> {
-                            throttle.recordFailure(request.getRemoteAddr(), request.getParameter("email"));
-                            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                            // Only a wrong email or password counts. Anything else (e.g. the
+                            // database is down) is the server's problem, not a guess.
+                            if (e instanceof BadCredentialsException || e instanceof UsernameNotFoundException) {
+                                throttle.recordFailure(request.getRemoteAddr(), request.getParameter("email"));
+                                response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                            } else {
+                                response.setStatus(HttpStatus.SERVICE_UNAVAILABLE.value());
+                            }
                         })
                         .permitAll())
                 .logout(logout -> logout
@@ -81,7 +89,10 @@ class SecurityConfig {
         return http.build();
     }
 
-    /** Refuses login attempts with 429 while the email address or IP address is throttled. Runs after the CSRF check. */
+    /**
+     * Refuses login attempts with 429 while the email address or IP address is throttled, and with
+     * 503 when too many logins are being checked at once. Runs after the CSRF check.
+     */
     private static final class ThrottleFilter extends OncePerRequestFilter {
         private final LoginThrottle throttle;
 
@@ -103,7 +114,18 @@ class SecurityConfig {
                 response.setHeader("Retry-After", String.valueOf(LoginThrottle.WINDOW.toSeconds()));
                 return;
             }
-            chain.doFilter(request, response);
+            // The password check (Argon2id, 19 MiB each) runs in the chain: only a few at a time.
+            // A login that gets no slot is refused before it is checked, so it is not counted.
+            if (!throttle.enterLogin()) {
+                response.setStatus(HttpStatus.SERVICE_UNAVAILABLE.value());
+                response.setHeader("Retry-After", "5");
+                return;
+            }
+            try {
+                chain.doFilter(request, response);
+            } finally {
+                throttle.leaveLogin();
+            }
         }
     }
 }

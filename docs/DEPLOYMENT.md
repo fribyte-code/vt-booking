@@ -31,7 +31,7 @@ Then tell Nginx which proxy to trust, in `.env`:
 
 To find the address, start the system, open the site through the proxy, and look at the first field of the `frontend` lines in `make prod-logs`. If the proxy runs on the same host, it is usually the Docker network's gateway (for example `172.27.0.1`). Set `TRUSTED_PROXY` to it, run `make prod-up`, and check that the logs now show the real client addresses. If Docker's networks are recreated with other addresses later, check again.
 
-This matters for security: the login is limited to 30 failed attempts per address in 15 minutes. With the default (`127.0.0.1`, trust nothing), every user has the proxy's address, so a few people mistyping their password could block everyone's login for 15 minutes. Never trust a wider range than the proxy itself: whoever is trusted can choose their address.
+This matters for security: logins are limited per address: 60 attempts a minute in Nginx, and 100 failed attempts in 15 minutes in the API. With the default (`127.0.0.1`, trust nothing), every user has the proxy's address and shares these limits, so a single person could block everyone's login for 15 minutes. Never trust a wider range than the proxy itself: whoever is trusted can choose their address.
 
 ## First start
 

@@ -36,7 +36,7 @@ import org.testcontainers.images.builder.Transferable;
 class ProxyClientAddressIntegrationTest {
 
     /** LoginThrottle.MAX_FAILURES_PER_IP. */
-    private static final int MAX_FAILURES_PER_IP = 30;
+    private static final int MAX_FAILURES_PER_IP = 100;
     private static final String NGINX_IMAGE = "nginx:1.27-alpine"; // as in frontend/Dockerfile
 
     private final HttpClient http = HttpClient.newHttpClient();
@@ -99,7 +99,7 @@ class ProxyClientAddressIntegrationTest {
         assertThat(conf).isNotEqualTo(original);
         // Nginx's own login rate limit would answer 429 before the API's throttle is reached, and
         // this test is about the address the API sees, so the limit is left out here.
-        String rateLimit = "limit_req zone=login burst=10 nodelay;";
+        String rateLimit = "limit_req zone=login burst=20 nodelay;";
         assertThat(conf).contains(rateLimit);
         conf = conf.replace(rateLimit, "");
 
