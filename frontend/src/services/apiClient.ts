@@ -136,8 +136,8 @@ export function createApiClient(
       return json<T>(await writeJson('PATCH', path, body))
     },
 
-    /** POST or DELETE that answers 204 No Content. */
-    async send(method: 'POST' | 'DELETE', path: string, body?: unknown): Promise<void> {
+    /** POST, PUT or DELETE that answers 204 No Content. */
+    async send(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<void> {
       const res = await writeJson(method, path, body)
       if (!res.ok) throw await toError(res)
     },

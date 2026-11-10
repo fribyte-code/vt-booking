@@ -192,4 +192,6 @@ export interface AppData {
   invitations?: Invitation[]
   /** Admins only: unhandled (NEW) requests from the public form. */
   newPublicRequests?: number
+  /** Admins only: coming events past midnight without guards ordered (the Natt tab's badge). */
+  nightWithoutGuards?: number
 }

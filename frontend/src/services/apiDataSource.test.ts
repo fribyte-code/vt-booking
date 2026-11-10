@@ -134,6 +134,7 @@ describe('API data source', () => {
       'GET /api/bookings/mine': () => json(200, []),
       'GET /api/bookings/requests': () => json(200, []),
       'GET /api/admin/public-requests/count': () => json(200, { count: 2 }),
+      'GET /api/admin/night/count': () => json(200, { count: 3 }),
     })
 
     const data = await createApiDataSource(client).load({ start: '2030-01-01T00:00:00.000Z', end: '2030-01-08T00:00:00.000Z' })
@@ -142,6 +143,7 @@ describe('API data source', () => {
     expect(calls.some((c) => c.path === '/api/bookings/requests')).toBe(true)
     // Only the unhandled public requests are counted, without loading them all.
     expect(data.newPublicRequests).toBe(2)
+    expect(data.nightWithoutGuards).toBe(3)
     expect(calls.some((c) => c.path === '/api/admin/public-requests')).toBe(false)
     // Names of other people come with the bookings; the management pages load users themselves.
     expect(calls.some((c) => c.path === '/api/admin/users')).toBe(false)

@@ -15,8 +15,9 @@ const RoomsAdmin = lazy(() => import('../components/admin/RoomsAdmin').then((m) 
 const PublicRequestsAdmin = lazy(() =>
   import('../components/admin/PublicRequestsAdmin').then((m) => ({ default: m.PublicRequestsAdmin })),
 )
+const NightAdmin = lazy(() => import('../components/admin/NightAdmin').then((m) => ({ default: m.NightAdmin })))
 
-type TabId = 'pending' | 'processed' | 'public' | 'users' | 'organizations' | 'rooms'
+type TabId = 'pending' | 'processed' | 'public' | 'night' | 'users' | 'organizations' | 'rooms'
 
 export function AdminPage() {
   const app = useApp()
@@ -55,6 +56,7 @@ export function AdminPage() {
             { id: 'pending', label: 'Ventende søknader', count: pending.length },
             { id: 'processed', label: 'Behandlet', count: processed.length },
             { id: 'public', label: 'Forespørsler', count: app.data.newPublicRequests || undefined },
+            { id: 'night', label: 'Natt', count: app.data.nightWithoutGuards || undefined },
             { id: 'users', label: 'Brukere' },
             { id: 'organizations', label: 'Organisasjoner' },
             { id: 'rooms', label: 'Rom og tilganger' },
@@ -67,6 +69,7 @@ export function AdminPage() {
           )}
           <Suspense fallback={<p className="text-sm text-slate-500">Laster …</p>}>
             {tab === 'public' && <PublicRequestsAdmin />}
+            {tab === 'night' && <NightAdmin />}
             {tab === 'users' && <UsersAdmin />}
             {tab === 'organizations' && <OrganizationsAdmin />}
             {tab === 'rooms' && <RoomsAdmin />}

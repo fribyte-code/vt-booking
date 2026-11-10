@@ -4,6 +4,7 @@ import { useApp } from '../../hooks/useApp'
 import { crossesMidnight, formatTimeRange } from '../../lib/dates'
 import type { Booking } from '../../types'
 import { NightBadge, RoomDot, StatusBadge } from './badges'
+import { DateBlock } from './DateBlock'
 
 interface BookingListItemProps {
   booking: Booking
@@ -17,20 +18,11 @@ interface BookingListItemProps {
 export function BookingListItem({ booking, meta, actions, children, hideSeries = false }: BookingListItemProps) {
   const app = useApp()
   const room = app.roomOf(booking)
-  const start = new Date(booking.start)
 
   return (
     <li className="flex flex-col gap-3 rounded-xl bg-white p-4 ring-1 ring-slate-200 transition-shadow hover:shadow-sm sm:flex-row sm:items-start sm:gap-4">
       <div className="flex gap-4 sm:contents">
-        <div className="w-12 shrink-0 text-center" aria-hidden>
-          <div className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-            {start.toLocaleDateString('nb-NO', { weekday: 'short' }).replace('.', '')}
-          </div>
-          <div className="text-2xl leading-8 font-medium text-slate-900">{start.getDate()}</div>
-          <div className="text-xs text-slate-500">
-            {start.toLocaleDateString('nb-NO', { month: 'short' }).replace('.', '')}
-          </div>
-        </div>
+        <DateBlock date={booking.start} />
 
         <div className="min-w-0 flex-1 border-l-[3px] pl-4" style={{ borderColor: room.color }}>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">

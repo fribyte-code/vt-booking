@@ -214,7 +214,7 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
       const { start, end } = clamp(range)
       const query = new URLSearchParams({ from: start, to: end })
 
-      const [rooms, organizations, calendar, mine, requests, invitations, publicRequests] = await Promise.all([
+      const [rooms, organizations, calendar, mine, requests, invitations, publicRequests, night] = await Promise.all([
         api.get<RoomResponse[]>('/api/rooms'),
         api.get<{ id: string; name: string }[]>('/api/organizations'),
         api.get<BookingResponse[]>(`/api/bookings?${query}`),
@@ -222,6 +222,7 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
         decides ? api.get<BookingResponse[]>('/api/bookings/requests') : Promise.resolve([]),
         api.get<Invitation[]>('/api/me/invitations'),
         isAdmin ? api.get<{ count: number }>('/api/admin/public-requests/count') : Promise.resolve(null),
+        isAdmin ? api.get<{ count: number }>('/api/admin/night/count') : Promise.resolve(null),
       ])
 
       const seenUntil = readSeen(me.id)
@@ -251,6 +252,7 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
         bookings: [...bookings.values()],
         invitations,
         newPublicRequests: publicRequests?.count,
+        nightWithoutGuards: night?.count,
       } satisfies AppData
     },
 

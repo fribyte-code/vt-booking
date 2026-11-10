@@ -135,6 +135,30 @@ export interface PublicRequest {
   updatedByName: string | null
 }
 
+/** BOOKING: approved (series included); REQUEST: a pending application; PUBLIC_REQUEST: from /soknad, not booked yet. */
+export type NightKind = 'BOOKING' | 'REQUEST' | 'PUBLIC_REQUEST'
+
+/** A coming event past midnight in the Natt tab (`GET /api/admin/night`). */
+export interface NightEvent {
+  kind: NightKind
+  /** Null for a public request without a booking. */
+  bookingId: string | null
+  /** The public request the event comes from, or null. */
+  publicRequestId: string | null
+  seriesId: string | null
+  title: string
+  /** For a public request: the room asked for, or null for no preference. */
+  roomId: string | null
+  roomName: string | null
+  organizationName: string
+  start: string
+  end: string
+  /** A public request's contacts (with phone), or the person who booked. */
+  contacts: { name: string; organization: string; phone: string | null }[]
+  guardsOrderedAt: string | null
+  guardsOrderedByName: string | null
+}
+
 /** What an admin edits on a request: the form's fields. */
 export interface PublicRequestFields {
   email: string
@@ -203,6 +227,16 @@ export const adminApi = {
   /** Creates the booking with the normal rules and marks the request as transferred, in one call. */
   createBookingFromRequest: (requestId: string, input: CreateBookingInput) =>
     api.post<{ id: string; status: BookingStatus }>(`/api/admin/public-requests/${id(requestId)}/booking`, input),
+
+  night: () => api.get<NightEvent[]>('/api/admin/night'),
+  /** "Vektere bestilt" on or off. A booking made from a public request is marked through the request. */
+  setGuards: async (event: Pick<NightEvent, 'bookingId' | 'publicRequestId'>, ordered: boolean) => {
+    await api.send('PUT', '/api/admin/night/guards', {
+      bookingId: event.publicRequestId ? null : event.bookingId,
+      publicRequestId: event.publicRequestId,
+      ordered,
+    })
+  },
 
   /** Future approved bookings and open requests in a room, of an organization, or requested by a user. */
   futureBookings: (kind: 'rooms' | 'organizations' | 'users', targetId: string) =>
