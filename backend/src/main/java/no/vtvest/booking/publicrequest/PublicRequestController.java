@@ -45,6 +45,12 @@ class PublicRequestController {
         return requests.list(currentUser.require());
     }
 
+    /** Unhandled (NEW) requests: {@code count}. Lets the admin's badge avoid loading every request. */
+    @GetMapping("/api/admin/public-requests/count")
+    PublicRequestCount count() {
+        return new PublicRequestCount(requests.countNew(currentUser.require()));
+    }
+
     @PostMapping("/api/admin/public-requests/{id}/reject")
     PublicRequest reject(@PathVariable UUID id) {
         return requests.reject(currentUser.require(), id);

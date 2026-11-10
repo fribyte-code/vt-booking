@@ -29,6 +29,9 @@ final class PublicRequestDtos {
             @NotBlank @Size(max = 2000) String description,
             @NotNull Boolean needsVillaGuard) {}
 
+    /** The number of unhandled (NEW) requests. */
+    record PublicRequestCount(long count) {}
+
     record PublicRequest(
             UUID id,
             String email,

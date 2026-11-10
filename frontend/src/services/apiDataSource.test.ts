@@ -132,15 +132,16 @@ describe('API data source', () => {
       'GET /api/bookings': () => json(200, []),
       'GET /api/bookings/mine': () => json(200, []),
       'GET /api/bookings/requests': () => json(200, []),
-      'GET /api/admin/public-requests': () => json(200, [{ status: 'NEW' }, { status: 'TRANSFERRED' }, { status: 'NEW' }]),
+      'GET /api/admin/public-requests/count': () => json(200, { count: 2 }),
     })
 
     const data = await createApiDataSource(client).load({ start: '2030-01-01T00:00:00.000Z', end: '2030-01-08T00:00:00.000Z' })
 
     expect(data.users).toEqual([expect.objectContaining({ id: 'u-admin', role: 'ADMIN' })])
     expect(calls.some((c) => c.path === '/api/bookings/requests')).toBe(true)
-    // Only the unhandled public requests are counted.
+    // Only the unhandled public requests are counted, without loading them all.
     expect(data.newPublicRequests).toBe(2)
+    expect(calls.some((c) => c.path === '/api/admin/public-requests')).toBe(false)
     // Names of other people come with the bookings; the management pages load users themselves.
     expect(calls.some((c) => c.path === '/api/admin/users')).toBe(false)
   })
@@ -225,6 +226,18 @@ describe('API data source', () => {
     await expect(createApiDataSource(offline).load({ start: BOOKING.start, end: BOOKING.end })).rejects.toMatchObject({
       code: 'NETWORK',
     })
+  })
+
+  it('reports a rate limit with one general message, whether it lasts seconds or minutes', async () => {
+    const tooMany = { code: 'FORBIDDEN', message: 'For mange forsøk. Prøv igjen senere.' }
+    const { client } = fakeServer({
+      // The API's login throttle: no body.
+      'POST /api/auth/login': () => new Response(null, { status: 429 }),
+      // Nginx's rate limit: an HTML page.
+      'POST /api/public/requests': () => new Response('<html>429 Too Many Requests</html>', { status: 429 }),
+    })
+    await expect(createApiDataSource(client).auth!.login('kari@example.no', 'feil')).rejects.toMatchObject(tooMany)
+    await expect(client.send('POST', '/api/public/requests', {})).rejects.toMatchObject(tooMany)
   })
 
   it('sends approval comments and cancellation reasons, and omits blank ones', async () => {
