@@ -256,7 +256,7 @@ export function createApiDataSource(api: ApiClient = createApiClient()): DataSou
 
     async listBookings(range, roomId) {
       const { start, end } = clamp(range)
-      const query = new URLSearchParams({ from: start, to: end, roomId })
+      const query = new URLSearchParams({ from: start, to: end, ...(roomId ? { roomId } : {}) })
       const found = await api.get<BookingResponse[]>(`/api/bookings?${query}`)
       const seenUntil = readSeen(userId ?? '')
       return found.map((b) => toBooking(b, seenUntil))

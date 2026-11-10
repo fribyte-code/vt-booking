@@ -30,7 +30,8 @@ export interface DataSource {
    * Approved bookings and unexpired requests the user may see in one room, overlapping the range.
    * For checking availability outside the loaded calendar range.
    */
-  listBookings(range: DateRange, roomId: string): Promise<Booking[]>
+  /** Bookings overlapping the range (at most 62 days), in one room or all of them. */
+  listBookings(range: DateRange, roomId?: string): Promise<Booking[]>
 
   createBooking(input: CreateBookingInput): Promise<Booking>
   approveBooking(booking: Booking, comment?: string): Promise<Booking>

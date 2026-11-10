@@ -62,7 +62,7 @@ export interface AppContextValue {
   roomOf: (booking: Booking) => RoomInfo
 
   /** One room's bookings in any period, also outside the loaded calendar range. Does not change `data`. */
-  listBookings: (range: DateRange, roomId: string) => Promise<Booking[]>
+  listBookings: (range: DateRange, roomId?: string) => Promise<Booking[]>
   createBooking: (input: CreateBookingInput) => Promise<Booking>
   approveBooking: (id: string, comment?: string) => Promise<Booking>
   rejectBooking: (id: string, reason: string) => Promise<Booking>
