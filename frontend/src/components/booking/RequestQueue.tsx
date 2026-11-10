@@ -1,4 +1,4 @@
-import { Building2, Check, ChevronDown, Inbox, Repeat, SearchX, User, X } from 'lucide-react'
+import { Check, ChevronDown, Inbox, Repeat, SearchX, User, UserCheck, X } from 'lucide-react'
 import { useState } from 'react'
 import { useApp } from '../../hooks/useApp'
 import { cn } from '../../lib/cn'
@@ -91,7 +91,7 @@ function ManagerLabel({ booking }: { booking: Booking }) {
   const managerId = roomManager(app.data.rooms, booking.roomId)
   return (
     <span className="flex items-center gap-1.5">
-      <Building2 /> Forvaltes av {managerId === VT_MANAGER ? 'VT' : (app.organization(managerId)?.name ?? 'ukjent organisasjon')}
+      <UserCheck /> Forvaltes av {managerId === VT_MANAGER ? 'VT' : (app.organization(managerId)?.name ?? 'ukjent organisasjon')}
     </span>
   )
 }
@@ -224,6 +224,7 @@ function SeriesRequestItem({
   return (
     <BookingListItem
       booking={first}
+      hideSeries
       meta={
         <>
           <span className="flex items-center gap-1.5">

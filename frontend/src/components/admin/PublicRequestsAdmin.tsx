@@ -5,7 +5,7 @@ import { cn } from '../../lib/cn'
 import { crossesMidnight, formatDate, formatDateTime, formatTimeRange } from '../../lib/dates'
 import { errorMessage } from '../../lib/errors'
 import { adminApi, type PublicRequest } from '../../services/adminApi'
-import { bookingDescription, replyMailto, requestedRoom } from '../../services/publicRequests'
+import { bookingDescription, formatPhone, replyMailto, requestedRoom } from '../../services/publicRequests'
 import { EmptyState } from '../booking/BookingListItem'
 import { NightBadge } from '../booking/badges'
 import { Button } from '../ui/Button'
@@ -188,7 +188,7 @@ function RequestItem({ request: r, actions }: { request: PublicRequest; actions?
                   <li key={i}>
                     <span className="font-medium">{c.name}</span> ({c.organization}) · kortnr. {c.cardNumber} ·{' '}
                     <a href={`tel:${c.phone}`} className="text-blue-700 hover:underline">
-                      {c.phone}
+                      {formatPhone(c.phone)}
                     </a>
                   </li>
                 ))}

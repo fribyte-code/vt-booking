@@ -10,9 +10,11 @@ interface BookingListItemProps {
   meta?: ReactNode
   actions?: ReactNode
   children?: ReactNode
+  /** Leave out "Gjentakende", when `meta` already says how many occurrences the series has. */
+  hideSeries?: boolean
 }
 
-export function BookingListItem({ booking, meta, actions, children }: BookingListItemProps) {
+export function BookingListItem({ booking, meta, actions, children, hideSeries = false }: BookingListItemProps) {
   const app = useApp()
   const room = app.roomOf(booking)
   const start = new Date(booking.start)
@@ -49,7 +51,7 @@ export function BookingListItem({ booking, meta, actions, children }: BookingLis
             <span className="flex items-center gap-1.5">
               <RoomDot color={room.color} className="size-2.5" /> {room.name}
             </span>
-            {booking.seriesId && (
+            {booking.seriesId && !hideSeries && (
               <span className="flex items-center gap-1.5">
                 <Repeat /> Gjentakende
               </span>
