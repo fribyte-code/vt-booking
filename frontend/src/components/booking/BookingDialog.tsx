@@ -288,8 +288,8 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
         const booking = await adminApi.createBookingFromRequest(fromRequest, input)
         app.notify(
           booking.status === 'APPROVED'
-            ? `${room?.name} er booket, og forespørselen er overført.`
-            : `Bookingen er opprettet som en søknad som venter på godkjenning, og forespørselen er overført.`,
+            ? `${room?.name} er booket, og forespørselen er markert som ferdig.`
+            : `Bookingen er opprettet som en søknad som venter på godkjenning, og forespørselen er markert som ferdig.`,
         )
         draft.onCreated?.()
         app.reload()
