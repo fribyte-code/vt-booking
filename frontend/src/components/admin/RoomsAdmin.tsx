@@ -56,6 +56,7 @@ export function RoomsAdmin() {
                 {room.name}
                 {room.status !== 'ACTIVE' && <Chip label={roomStatusLabels[room.status]} tone="amber" />}
                 {room.publicRequestable && <Chip label="I søknadsskjemaet" />}
+                {room.hiddenWithoutAccess && <Chip label="Skjult uten tilgang" />}
               </p>
               <p className="text-xs text-slate-500">
                 {[
@@ -158,6 +159,7 @@ function RoomDialog({
         publicRequestable: false,
         openingHours: [],
         managingOrganizationId: null,
+        hiddenWithoutAccess: false,
       },
   )
   const [error, setError] = useState<string | null>(null)
@@ -341,6 +343,20 @@ function RoomDialog({
           </Select>
         </Field>
         <OpeningHoursEditor value={fields.openingHours} onChange={(openingHours) => set({ openingHours })} />
+        <div className="space-y-1">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={fields.hiddenWithoutAccess}
+              onChange={(e) => set({ hiddenWithoutAccess: e.target.checked })}
+            />
+            Skjul rommet for de uten tilgang
+          </label>
+          <p className="text-xs text-slate-500">
+            Rommet og bookingene i det vises bare for medlemmer av organisasjoner som kan booke det (tilgang annet enn «Ingen»
+            under Tilganger), for den som forvalter rommet og for systemadministratorer. Gjelder ikke søknadsskjemaet.
+          </p>
+        </div>
         <div className="space-y-1">
           <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
             <input type="checkbox" checked={fields.publicRequestable} onChange={(e) => set({ publicRequestable: e.target.checked })} />

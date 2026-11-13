@@ -6,18 +6,23 @@ import no.vtvest.booking.user.User;
 
 /**
  * Who is looking, with what they may see and decide: their organizations and the rooms they
- * manage (see RoomManagement), both read from the database for this request. System admins see
- * and decide everything.
+ * manage (see RoomManagement) and the rooms hidden from them (see RoomVisibility), all read from
+ * the database for this request. System admins see and decide everything.
  */
-record Viewer(User user, Set<UUID> organizationIds, Set<UUID> managedRoomIds) {
+record Viewer(User user, Set<UUID> organizationIds, Set<UUID> managedRoomIds, Set<UUID> hiddenRoomIds) {
 
     boolean isSystemAdmin() {
         return user.isSystemAdmin();
     }
 
-    /** Everyone sees approved bookings; other statuses only their own organization, the room's managers and system admins. */
+    /**
+     * Everyone sees approved bookings, except in rooms hidden from them; other statuses only their
+     * own organization, the room's managers and system admins. An organization always sees its own
+     * bookings, also in a room that has since been hidden from it.
+     */
     boolean sees(Booking booking) {
-        return booking.getStatus() == BookingStatus.APPROVED || seesDetails(booking);
+        return (booking.getStatus() == BookingStatus.APPROVED && !hiddenRoomIds.contains(booking.getRoomId()))
+                || seesDetails(booking);
     }
 
     /** Description, comments and the people involved. */

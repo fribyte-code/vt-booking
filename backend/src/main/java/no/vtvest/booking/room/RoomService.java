@@ -20,18 +20,21 @@ public class RoomService {
     private final MembershipRepository memberships;
     private final OrganizationRepository organizations;
     private final OpeningHoursRepository openingHours;
+    private final RoomVisibility visibility;
 
     RoomService(
             RoomRepository rooms,
             RoomAccessRepository roomAccess,
             MembershipRepository memberships,
             OrganizationRepository organizations,
-            OpeningHoursRepository openingHours) {
+            OpeningHoursRepository openingHours,
+            RoomVisibility visibility) {
         this.rooms = rooms;
         this.roomAccess = roomAccess;
         this.memberships = memberships;
         this.organizations = organizations;
         this.openingHours = openingHours;
+        this.visibility = visibility;
     }
 
     /**
@@ -47,6 +50,7 @@ public class RoomService {
     /**
      * Non-archived rooms, each with the effective permission per organization the actor belongs to.
      * Administrators get the permission of every active organization (the admin overview).
+     * Rooms hidden from the actor (see RoomVisibility) are left out.
      */
     @Transactional(readOnly = true)
     public List<RoomResponse> listRooms(User actor) {
@@ -61,8 +65,10 @@ public class RoomService {
                 .stream()
                 .collect(Collectors.toMap(RoomAccess::getId, RoomAccess::getPermission));
         Map<java.util.UUID, List<OpeningHours.Interval>> hours = openingHours.all();
+        java.util.Set<java.util.UUID> hidden = visibility.hiddenRoomIds(actor);
 
         return rooms.findByStatusNotOrderByName(RoomStatus.ARCHIVED).stream()
+                .filter(room -> !hidden.contains(room.getId()))
                 .map(room -> RoomResponse.from(room, myOrganizations.stream()
                         .map(org -> new RoomResponse.OrganizationPermission(
                                 org.getId(),
