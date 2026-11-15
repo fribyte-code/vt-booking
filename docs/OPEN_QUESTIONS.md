@@ -38,6 +38,7 @@ Mapping to the README's "Må avklares med Velferdstinget":
 | Q-19 | Room managers | A room can be managed by an organization ("Forvaltes av", e.g. Engen by Studentersamfunnet). Its ORG_ADMINs see, approve and reject applications for that room, alongside the system admins. No separate role. Only system admins change rooms and handle public requests. |
 | Q-38 | Guards' address | Not needed in the app: "Send til vektere" has no recipient, and the admin copies the text and sends it to the guards themselves (decided November 2026). |
 | Q-37 | Public requests | External groups apply without an account at `/soknad` for the rooms marked "Kan forespørres", with 1–10 responsible persons (the 6-digit number on the UiB card, not the student number, and phone; Q-39 settled November 2026). Every event needs a villa guard; the form says so and no longer asks. A system admin books it for "Eksterne"; the booking is then the truth for time and room. |
+| Q-40 | Hiding rooms | Per room, "Skjul rommet for de uten tilgang" in "Rediger rom", off by default. When on, only members of organizations with `DIRECT` or `REQUEST`, the room's managers and SYSTEM_ADMINs see the room and other organizations' bookings in it; an organization always sees its own bookings. Per organization only, not per person. Independent of the room's status and of "Kan forespørres". Booking a hidden room through the API gives "no access" (decided November 2026; see `HIDDEN_ROOMS_DRAFT.md`). |
 
 ## B. Still open
 
@@ -48,7 +49,6 @@ Mapping to the README's "Må avklares med Velferdstinget":
 - **Q-09 Hosting.** Where does it run (fribyte?), on which hostname, and is there an existing reverse proxy, TLS setup, backup target or monitoring to use? This decides the production setup in `DEPLOYMENT.md`.
 - **Q-20 Backups.** Proposed: nightly, at most 24 hours of data loss, about 4 hours to restore, an encrypted off-site copy and a quarterly restore test.
 - **Q-22 Data retention.** How long are bookings, descriptions and inactive accounts kept? Nothing is deleted or anonymized today.
-- **Q-40 Hiding rooms.** Should some rooms be hidden from some people or organizations? Today every logged-in user sees every active room in the calendar; access `NONE` only stops booking. Should `NONE` also hide the room, or is a separate setting needed? Draft on branch `feature/hidden-rooms`: a per-room setting "Skjul rommet for de uten tilgang" that makes `NONE` mean hidden for that room; see `HIDDEN_ROOMS_DRAFT.md`.
 - **Q-41 Room descriptions and managers.** The texts for Festplassen and Torgallmenningen (who is prioritized) shown in the form, and who in Studentersamfunnet is ORG_ADMIN and so manages Engen. Set in Administrasjon; see `DEPLOY_CHECKLIST.md`.
 - **Q-34 Who may create accounts?** Today an ORG_ADMIN who adds an unknown email creates a global account and sees its temporary password. With no email verification, any ORG_ADMIN can create accounts for any address. The alternative is that only SYSTEM_ADMINs create accounts, and ORG_ADMINs only invite existing ones.
 

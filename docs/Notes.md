@@ -242,4 +242,4 @@ Merknader
 - Visning som bookinglisten er nå på plass: en kompakt liste der en rad åpner detaljene. Kommentaren din «ikke bookingliste lignende enda» stemmer derfor ikke lenger.
 - «Oppdaterer seg ikke når booking endres?» er løst. Forespørselen henter tid og rom fra bookingen, og endringer i forespørselen oppdaterer bookingen.
 - Engen, Samfunnet og UiB-kantina er bygget, men må settes opp i admin etter deploy. Det gjelder «Forvaltes av», en org-admin i Samfunnet og Kantinas åpningstider, som beskrevet i docs/DEPLOY_CHECKLIST.md.
-- «Gjemme rom» står som åpent spørsmål Q-40 i docs/OPEN_QUESTIONS.md.
+- «Gjemme rom» (Q-40) er avgjort med Patrik og bygget på branchen feature/hidden-rooms, se docs/HIDDEN_ROOMS_DRAFT.md.

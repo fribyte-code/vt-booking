@@ -62,7 +62,7 @@ Roles: global `USER` or `SYSTEM_ADMIN` on `users`; `MEMBER` or `ORG_ADMIN` per o
 
 Organization admins can add members (a new email creates an account; an existing one gets an invitation), change roles and remove members. They cannot reset passwords, change anyone's email, status or global role, touch a SYSTEM_ADMIN's membership, or remove or demote the organization's last ORG_ADMIN.
 
-**Visibility.** Every logged-in user sees approved bookings: time, room, title and organization name. Pending requests, descriptions, the people involved, comments and cancellation reasons are only shown to the booking's own organization, the room's managers and SYSTEM_ADMINs. Bookings someone may not see are reported as not found.
+**Visibility.** Every logged-in user sees approved bookings: time, room, title and organization name. Pending requests, descriptions, the people involved, comments and cancellation reasons are only shown to the booking's own organization, the room's managers and SYSTEM_ADMINs. Bookings someone may not see are reported as not found. A room with `hidden_without_access` is left out of `/api/rooms`, and its approved bookings are hidden, for everyone except members of organizations whose permission for it is not `NONE`, its managers and SYSTEM_ADMINs (`RoomVisibility`); an organization still sees its own bookings.
 
 ## 5. Booking rules
 
