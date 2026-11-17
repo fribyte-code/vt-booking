@@ -1,14 +1,11 @@
 import { cn } from '../../lib/cn'
+import { initialsOf } from '../../lib/initials'
 import type { User } from '../../types'
 
 const avatarColors = ['bg-sky-600', 'bg-emerald-600', 'bg-amber-600', 'bg-rose-600', 'bg-indigo-600']
 
 export function Avatar({ user, className }: { user: User; className?: string }) {
-  const initials = user.name
-    .split(' ')
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join('')
+  const initials = initialsOf(user.name)
   const index = [...user.id].reduce((sum, c) => sum + c.charCodeAt(0), 0) % avatarColors.length
   return (
     <span
