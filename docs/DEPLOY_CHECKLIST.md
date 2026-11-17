@@ -78,7 +78,7 @@ Run on the test server with test accounts (a system admin, an ORG_ADMIN in Samfu
 - [ ] An ordinary member doesn't see it.
 
 **Forespørsler** (system admin)
-- [ ] The list is compact; filters by status and "Bare over midnatt" and the order work.
+- [ ] The list is compact and opens on "Alle"; "Åpne", "Ferdig" and "Avslått" show one status each.
 - [ ] A row opens the details; "Opprett booking" makes the booking, and the request becomes "Ferdig" with "Booking opprettet".
 - [ ] "Rediger" with a new time moves the booking; a time that collides is refused, and nothing is saved.
 - [ ] "Vis i kalenderen" opens the booking in the calendar.

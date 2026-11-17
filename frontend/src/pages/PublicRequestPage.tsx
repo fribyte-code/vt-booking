@@ -54,7 +54,7 @@ const TEXT = {
   room: 'Endelig avgjørelse om rom tas ved behandling av forespørselen.',
   date: 'Datoen arrangementet starter.',
   time:
-    'Velg dato, starttidspunkt og sluttidspunkt. Lokalene er stengt mellom kl 05:00 og 07:00',
+    'Velg dato, starttidspunkt og sluttidspunkt. Lokalene er stengt mellom kl. 05:00 og 07:00.',
   description: 'Beskriv arrangementet: hva som skal skje, omtrent hvor mange som kommer, og om det blir servering.',
   contacts:
     'Hvem er ansvarlige under arrangementet? Oppgi minst én person. Kortnummeret er de 6 sifrene på UiB-kortet, ikke studentnummeret.',
