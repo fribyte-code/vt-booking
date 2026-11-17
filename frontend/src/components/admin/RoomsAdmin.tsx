@@ -61,7 +61,6 @@ export function RoomsAdmin() {
                 {[
                   room.capacity ? `${room.capacity} plasser` : null,
                   room.location,
-                  `Standard: ${permissionLabels[room.defaultPermission]}`,
                   room.openingHours.length > 0 ? `Åpent ${describeOpeningHours(room.openingHours)}` : null,
                   `Forvaltes av ${room.managingOrganizationId ? (allOrganizations.find((o) => o.id === room.managingOrganizationId)?.name ?? 'ukjent') : 'VT'}`,
                 ]
@@ -284,10 +283,10 @@ function RoomDialog({
           onChange={(color) => set({ color })}
           usedBy={(color) => others.filter((r) => sameColor(r.color, color)).map((r) => r.name)}
         />
-        {/* For existing rooms the default permission is set under Tilganger, next to the organizations it applies to. */}
+        {/* The default permission is chosen once, when the room is created; after that access is edited per organization under Tilganger. */}
         <div className="grid gap-4 sm:grid-cols-2">
           {!room && (
-            <Field label="Standardtilgang" htmlFor={`${id}-perm`} hint="Gjelder organisasjoner uten egen innstilling. Endres senere under Tilganger.">
+            <Field label="Standardtilgang" htmlFor={`${id}-perm`} hint="Tilgangen alle organisasjoner får i rommet, også de som opprettes senere. Endres per organisasjon under Tilganger.">
               <Select id={`${id}-perm`} value={fields.defaultPermission} onChange={(e) => set({ defaultPermission: e.target.value as Permission })}>
                 {PERMISSIONS.map((p) => (
                   <option key={p} value={p}>
