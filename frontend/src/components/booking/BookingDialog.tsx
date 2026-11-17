@@ -114,7 +114,9 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
   const rooms = fromRequest ? roomsOnBehalf(data.rooms, orgs.map((o) => o.id)) : data.rooms
   const roomById = (id: string) => rooms.find((r) => r.id === id)
   // A public request goes to "Eksterne" unless the admin picks another; without it, nothing is preselected.
-  const initialOrg = forRequest ? forRequest.preselected : (orgs[0]?.id ?? '')
+  // Otherwise the organization is only preselected when there is just one (always so when editing), so
+  // members of several don't book on behalf of the wrong one by accident.
+  const initialOrg = forRequest ? forRequest.preselected : orgs.length === 1 ? orgs[0].id : ''
   // Only a room the user already chose (the booking edited, a room column in the calendar, a public
   // request's room) is preselected. Otherwise the user picks one, so nobody books the wrong room
   // by accident.
@@ -514,7 +516,8 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
             <legend className="mb-1.5 text-sm font-medium text-slate-700">Rom</legend>
             <div className="grid gap-2">
               {rooms.map((r) => {
-                const p = getPermission(r, organizationId)
+                // Before an organization is chosen, rooms are not judged by access; choosing one deselects a room it can't book.
+                const p = organizationId ? getPermission(r, organizationId) : null
                 const selected = r.id === roomId
                 const closed = r.status === 'DISABLED'
                 const disabled = (p === 'NONE' || closed) && !selected
@@ -545,7 +548,7 @@ function BookingForm({ draft, editing }: { draft: BookingDraft; editing?: Bookin
                     {closed ? (
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">Stengt</span>
                     ) : (
-                      <PermissionBadge permission={p} />
+                      p && <PermissionBadge permission={p} />
                     )}
                   </label>
                 )
