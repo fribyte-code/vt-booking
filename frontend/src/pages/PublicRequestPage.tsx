@@ -12,6 +12,7 @@ import { createApiClient } from '../services/apiClient'
 import {
   CLOSED_HOURS_MESSAGE,
   describeOpeningHours,
+  MAX_ADVANCE_DAYS,
   MAX_DURATION_HOURS,
   openingHoursMessage,
   overlapsClosedHours,
@@ -31,10 +32,21 @@ const api = createApiClient()
 /**
  * The texts of the form. Update them here if they change.
  */
+const LINKS = {
+  bookingRules: 'https://drive.google.com/file/d/1oU1UlMt5YMQHTs4Djpm640Eqcy8BOIQA/view',
+  villaloven: 'https://drive.google.com/file/d/15mGkOJFFArr34fvLJU6BVWjzIu93qcAB/view',
+}
+
+function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-700 underline hover:text-blue-800">
+      {children}
+    </a>
+  )
+}
+
 const TEXT = {
-  intro:
-    'Dette skjemaet gjelder forespørsel om å låne et av fellesarealene i Studentvillaen i Christies gate 18. ' +
-    'Før du sender inn, må du ha lest bookingreglene og Villaloven.',
+  intro: 'Dette skjemaet gjelder forespørsel om å låne et av fellesarealene i Studentvillaen i Christies gate 18.',
   email: 'Vi svarer på forespørselen til denne adressen.',
   organization: 'Navnet på organisasjonen, foreningen eller gruppen som arrangerer.',
   eventName: 'Hva heter arrangementet?',
@@ -42,7 +54,7 @@ const TEXT = {
   room: 'Endelig avgjørelse om rom tas ved behandling av forespørselen.',
   date: 'Datoen arrangementet starter.',
   time:
-    'Velg dato, starttidspunkt og sluttidspunkt. Lokalene er stengt mellom kl 05:00 og 07:00',
+    'Velg dato, starttidspunkt og sluttidspunkt. Lokalene er stengt mellom kl. 05:00 og 07:00.',
   description: 'Beskriv arrangementet: hva som skal skje, omtrent hvor mange som kommer, og om det blir servering.',
   contacts:
     'Hvem er ansvarlige under arrangementet? Oppgi minst én person. Kortnummeret er de 6 sifrene på UiB-kortet, ikke studentnummeret.',
@@ -122,7 +134,11 @@ export function PublicRequestPage() {
   const room = rooms?.find((r) => r.id === roomId)
   const timeProblem = !times
     ? null
-    : Date.parse(end) - Date.parse(start) > MAX_DURATION_HOURS * 3_600_000
+    : Date.parse(start) <= Date.now()
+      ? 'Tidspunktet har allerede vært.'
+      : Date.parse(start) > Date.now() + MAX_ADVANCE_DAYS * 24 * 3_600_000
+        ? `Du kan søke om lån inntil ${MAX_ADVANCE_DAYS} dager frem i tid.`
+        : Date.parse(end) - Date.parse(start) > MAX_DURATION_HOURS * 3_600_000
       ? `Arrangementet kan vare i høyst ${MAX_DURATION_HOURS} timer.`
       : overlapsClosedHours(start, end)
         ? CLOSED_HOURS_MESSAGE
@@ -232,7 +248,11 @@ export function PublicRequestPage() {
         </div>
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-slate-900">Forespørsel om lån av fellesareal i Studentvillaen</h1>
-          <p className="mt-2 text-sm text-slate-600">{TEXT.intro}</p>
+          <p className="mt-2 text-sm text-slate-600">
+            {TEXT.intro} Før du sender inn, må du ha lest{' '}
+            <ExternalLink href={LINKS.bookingRules}>bookingreglene</ExternalLink> og{' '}
+            <ExternalLink href={LINKS.villaloven}>Villaloven</ExternalLink>.
+          </p>
         </div>
 
         {sent ? (
@@ -333,6 +353,7 @@ export function PublicRequestPage() {
                       id={`${id}-date`}
                       type="date"
                       min={toDateInput(new Date())}
+                      max={toDateInput(new Date(Date.now() + MAX_ADVANCE_DAYS * 24 * 3_600_000))}
                       value={date}
                       aria-invalid={missing(date)}
                       className={cn(missing(date) && 'ring-red-400!')}

@@ -6,7 +6,7 @@ interface Option<T extends string> {
   count?: number
 }
 
-/** One choice out of a few, as a row of buttons with an optional count each (e.g. Åpne · Ferdig · Avslått · Alle). */
+/** One choice out of a few, as a row of buttons with an optional count each (e.g. Alle · Åpne · Ferdig · Avslått). */
 export function Segmented<T extends string>({
   options,
   value,

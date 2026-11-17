@@ -72,7 +72,7 @@ Fullstendig veiledning, med reverse proxy, backup, gjenoppretting og konfigurasj
 |---|---|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Hvordan systemet er bygd opp |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Drift i produksjon |
-| [`docs/DEPLOY_CHECKLIST.md`](docs/DEPLOY_CHECKLIST.md) | Sjekkliste og testplan for utrullingen i november 2026 (V9–V12) |
+| [`docs/DEPLOY_CHECKLIST.md`](docs/DEPLOY_CHECKLIST.md) | Sjekkliste og testplan for utrullingen i november 2026 (V9–V13) |
 | [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) | Hva som er avklart med Velferdstinget, og hva som er åpent |
 | [`docs/README.md`](docs/README.md) | Opprinnelig kravspesifikasjon og notater |
 | [`backend/README.md`](backend/README.md) | Oppsett av backend og API-referanse |

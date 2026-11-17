@@ -32,7 +32,7 @@ export function PublicRequestsAdmin() {
   const app = useApp()
   const load = useCallback(() => adminApi.publicRequests(), [])
   const { data: requests, error, reload } = useAdminData(load)
-  const [view, setView] = useState<PublicRequestView>('OPEN')
+  const [view, setView] = useState<PublicRequestView>('ALL')
   const [openId, setOpenId] = useState<string | null>(null)
 
   if (error) return <Alert tone="error">{error}</Alert>

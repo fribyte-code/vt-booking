@@ -140,6 +140,9 @@ export function BookingCalendar({
       selectable
       selectMirror
       allDaySlot={false}
+      // Rooms are closed 05:00–07:00, so an event ending before 07:00 belongs to the evening before:
+      // in the month view a 22:00–03:00 booking stays on its start day.
+      nextDayThreshold="07:00:00"
       slotMinTime="00:00:00"
       slotMaxTime="24:00:00"
       scrollTime="07:30:00"

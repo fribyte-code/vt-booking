@@ -243,3 +243,39 @@ Merknader
 - «Oppdaterer seg ikke når booking endres?» er løst. Forespørselen henter tid og rom fra bookingen, og endringer i forespørselen oppdaterer bookingen.
 - Engen, Samfunnet og UiB-kantina er bygget, men må settes opp i admin etter deploy. Det gjelder «Forvaltes av», en org-admin i Samfunnet og Kantinas åpningstider, som beskrevet i docs/DEPLOY_CHECKLIST.md.
 - «Gjemme rom» (Q-40) er avgjort med Patrik og bygget på branchen feature/hidden-rooms, se docs/HIDDEN_ROOMS_DRAFT.md.
+---
+
+## Status 17. nov (utkast)
+
+Ferdig siden listene over
+- Undertekster ventende søknader / forespørsler
+- Brukersøk på organisasjon
+- Forklaring av arkivering og sletting (rom og organisasjoner)
+- Avatar: bare bokstaver
+- Gjemme rom (V13, ligger i dev)
+- Natt er egen fane, viser også ventende søknader
+- Forespørsler som kompakt liste, klikk for detaljer
+- Standardrom: vises i romtilganger, ikke forvalgt i booking
+- Bookinglengde er 22 t, ikke 12 som står øverst
+
+Før deploy
+- Commit eller forkast endringen i RoomsAdmin.tsx
+- Slette gammel stash fra hidden-rooms?
+- Merge dev inn i main
+- Følge docs/DEPLOY_CHECKLIST.md (backup før V9–V13)
+- Sette opp i admin: Museplassen, Engen «Forvaltes av», org-admin i Samfunnet, åpningstider Kantina, romtekster Festplassen/Torgallmenningen
+
+Avklare med VT (OPEN_QUESTIONS.md)
+- Titler synlige for alle innloggede? (Q-05)
+- Personvern, databehandleravtale, personvernerklæring (Q-08)
+- Drift og backup hos Fribyte (Q-09, Q-20)
+- Hvor lenge lagres data (Q-22)
+- Skal org-admin kunne lage kontoer? (Q-34)
+
+Senere / kanskje
+- Zoom-knapper
+- Historikkfane, skjule bookinger eldre enn 2 uker, søk og last flere
+- Logg over hva admin legger inn
+- iCal-abonnement
+- Endre mail-mal
+- Chat

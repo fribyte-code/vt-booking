@@ -1,5 +1,5 @@
 import { CalendarRange, Menu } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Outlet } from 'react-router-dom'
 import { useApp } from '../../hooks/useApp'
 import { BookingDetailsDialog } from '../booking/BookingDetailsDialog'
@@ -14,6 +14,15 @@ import { Sidebar } from './Sidebar'
 export function AppLayout() {
   const app = useApp()
   const [drawerOpen, setDrawerOpen] = useState(false)
+
+  useEffect(() => {
+    if (!drawerOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDrawerOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [drawerOpen])
 
   return (
     <div className="flex h-dvh flex-col">
@@ -43,7 +52,12 @@ export function AppLayout() {
         {drawerOpen && (
           <div className="fixed inset-0 z-40 lg:hidden">
             <div className="absolute inset-0 bg-slate-900/40" onClick={() => setDrawerOpen(false)} aria-hidden />
-            <aside className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-white shadow-xl">
+            <aside
+              role="dialog"
+              aria-modal="true"
+              aria-label="Meny"
+              className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-white shadow-xl"
+            >
               <Sidebar onNavigate={() => setDrawerOpen(false)} />
             </aside>
           </div>
