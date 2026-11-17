@@ -1,6 +1,6 @@
 # Utkast: skjule rom (Q-40)
 
-Status: løsningen er avgjort (se nederst). Ligger på branchen `feature/hidden-rooms`, ikke merget.
+Status: løsningen er avgjort (se nederst). Merget og bygget (V13).
 
 ## Problemet
 

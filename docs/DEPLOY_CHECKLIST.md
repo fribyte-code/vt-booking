@@ -1,10 +1,10 @@
 # Deploy checklist: November 2026 release
 
-For deploying the November 2026 changes (migrations V9–V12) to the test server, and later to Fribyte. The commands are in `DEPLOYMENT.md`; this list is the order and what to check. Tick off as you go.
+For deploying the November 2026 changes (migrations V9–V13) to the test server, and later to Fribyte. The commands are in `DEPLOYMENT.md`; this list is the order and what to check. Tick off as you go.
 
 ## 1. Before
 
-- [ ] **Back up the database**, and check that the file isn't empty. V9–V12 can't be undone without the backup.
+- [ ] **Back up the database**, and check that the file isn't empty. V9–V13 can't be undone without the backup.
   ```bash
   docker compose -f compose.prod.yaml exec -T db pg_dump -U booking -Fc booking > vt-booking-$(date +%F)-before-v9.dump
   ls -lh vt-booking-*-before-v9.dump
@@ -33,8 +33,9 @@ For deploying the November 2026 changes (migrations V9–V12) to the test server
 | V10 | Handling status for public requests: `TRANSFERRED` becomes `DONE`; adds who edited last and when. |
 | V11 | A request whose booking is cancelled or deleted lets go of it and goes back to "Under arbeid" (trigger). Requests whose booking was **already** cancelled are released once: `DONE` becomes `IN_PROGRESS`. |
 | V12 | New table `guard_orders` ("Vektere bestilt"). Nothing existing changes. |
+| V13 | Rooms get "Skjul rommet for de uten tilgang" (`hidden_without_access`), off for every room. Nothing existing changes. |
 
-- [ ] Check that all four ran:
+- [ ] Check that all five ran:
   ```bash
   docker compose -f compose.prod.yaml exec -T db psql -U booking -d booking \
     -c "SELECT version, success FROM flyway_schema_history WHERE version::int >= 9 ORDER BY installed_rank"
@@ -92,6 +93,10 @@ Run on the test server with test accounts (a system admin, an ORG_ADMIN in Samfu
 **Other**
 - [ ] Brukere: search and filter by organization.
 - [ ] The room dialog explains closing, archiving and deleting.
+
+**Hidden rooms** (V13)
+- [ ] With "Skjul rommet for de uten tilgang" on, a member of an organization with `Ingen` doesn't see the room or other organizations' bookings in it; an organization with `Direkte` or `Søknad`, the room's managers and the system admin do.
+- [ ] Off (the default), everyone sees the room as before.
 
 ## 6. If something goes wrong
 
