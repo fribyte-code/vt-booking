@@ -51,8 +51,8 @@ export function RoomsAdmin() {
         <section key={room.id} className="rounded-xl ring-1 ring-slate-200">
           <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
             <RoomDot color={room.color} />
-            <div className="min-w-0 flex-1">
-              <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
+            <div className="min-w-48 flex-1">
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-slate-900">
                 {room.name}
                 {room.status !== 'ACTIVE' && <Chip label={roomStatusLabels[room.status]} tone="amber" />}
                 {room.publicRequestable && <Chip label="I søknadsskjemaet" />}
