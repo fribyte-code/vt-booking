@@ -31,6 +31,7 @@ import no.vtvest.booking.room.RoomManagement;
 import no.vtvest.booking.room.RoomRepository;
 import no.vtvest.booking.room.RoomService;
 import no.vtvest.booking.room.RoomStatus;
+import no.vtvest.booking.room.RoomVisibility;
 import no.vtvest.booking.user.User;
 import no.vtvest.booking.user.UserRepository;
 import no.vtvest.booking.user.UserStatus;
@@ -66,6 +67,7 @@ public class BookingService {
     private final ZoneId zone;
     private final OpeningHoursRepository openingHours;
     private final RoomManagement roomManagement;
+    private final RoomVisibility roomVisibility;
 
     BookingService(
             BookingRepository bookings,
@@ -77,7 +79,8 @@ public class BookingService {
             Clock clock,
             ZoneId zone,
             OpeningHoursRepository openingHours,
-            RoomManagement roomManagement) {
+            RoomManagement roomManagement,
+            RoomVisibility roomVisibility) {
         this.bookings = bookings;
         this.rooms = rooms;
         this.roomService = roomService;
@@ -88,6 +91,7 @@ public class BookingService {
         this.zone = zone;
         this.openingHours = openingHours;
         this.roomManagement = roomManagement;
+        this.roomVisibility = roomVisibility;
     }
 
     @Transactional
@@ -741,13 +745,14 @@ public class BookingService {
         return booking.getStatus() == BookingStatus.PENDING && !booking.getStartAt().isAfter(now);
     }
 
-    /** The actor's organizations and managed rooms, read from the database for this request. */
+    /** The actor's organizations, managed rooms and hidden rooms, read from the database for this request. */
     Viewer viewerOf(User actor) {
         Set<UUID> organizationIds = memberships.findByIdUserId(actor.getId()).stream()
                 .map(Membership::getId)
                 .map(MembershipId::organizationId)
                 .collect(Collectors.toSet());
-        return new Viewer(actor, organizationIds, roomManagement.managedRoomIds(actor.getId()));
+        return new Viewer(actor, organizationIds, roomManagement.managedRoomIds(actor.getId()),
+                roomVisibility.hiddenRoomIds(actor));
     }
 
     BookingResponse toResponse(Booking booking, User actor) {

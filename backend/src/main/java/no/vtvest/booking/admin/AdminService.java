@@ -312,7 +312,8 @@ class AdminService {
                 rs.getInt("booking_count"),
                 rs.getBoolean("public_requestable"),
                 rs.getObject("managing_organization_id", UUID.class),
-                OpeningHours.toEntries(hours.getOrDefault(id, List.of())));
+                OpeningHours.toEntries(hours.getOrDefault(id, List.of())),
+                rs.getBoolean("hidden_without_access"));
     }
 
     @Transactional
@@ -323,11 +324,11 @@ class AdminService {
         requireManagingOrganization(body.managingOrganizationId(), null);
         UUID id = jdbc.queryForObject("""
                 INSERT INTO rooms (name, description, location, capacity, color, default_permission, public_requestable,
-                    managing_organization_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+                    managing_organization_id, hidden_without_access)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
                 """, UUID.class, name, blankToNull(body.description()), blankToNull(body.location()),
                 body.capacity(), body.color(), body.defaultPermission().name(), Boolean.TRUE.equals(body.publicRequestable()),
-                body.managingOrganizationId());
+                body.managingOrganizationId(), Boolean.TRUE.equals(body.hiddenWithoutAccess()));
         openingHours.replace(id, hours);
         return room(id);
     }
@@ -348,11 +349,11 @@ class AdminService {
         jdbc.update("""
                 UPDATE rooms SET name = ?, description = ?, location = ?, capacity = ?, color = ?, default_permission = ?,
                     status = coalesce(?, status), public_requestable = coalesce(?, public_requestable),
-                    managing_organization_id = ?
+                    managing_organization_id = ?, hidden_without_access = coalesce(?, hidden_without_access)
                 WHERE id = ?
                 """, name, blankToNull(body.description()), blankToNull(body.location()), body.capacity(), body.color(),
                 body.defaultPermission().name(), body.status() == null ? null : body.status().name(),
-                body.publicRequestable(), body.managingOrganizationId(), id);
+                body.publicRequestable(), body.managingOrganizationId(), body.hiddenWithoutAccess(), id);
         if (hours != null) {
             openingHours.replace(id, hours);
         }

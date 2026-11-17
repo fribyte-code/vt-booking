@@ -43,6 +43,10 @@ public class Room {
     @Column(name = "managing_organization_id")
     private UUID managingOrganizationId;
 
+    /** Shown only to those with access, its managers and system admins (see RoomVisibility). */
+    @Column(name = "hidden_without_access", nullable = false)
+    private boolean hiddenWithoutAccess;
+
     protected Room() {}
 
     public UUID getId() {
@@ -79,5 +83,9 @@ public class Room {
 
     public UUID getManagingOrganizationId() {
         return managingOrganizationId;
+    }
+
+    public boolean isHiddenWithoutAccess() {
+        return hiddenWithoutAccess;
     }
 }

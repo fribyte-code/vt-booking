@@ -47,6 +47,8 @@ export interface RoomFields {
   openingHours: OpeningHoursEntry[]
   /** Its ORG_ADMINs see, approve and reject the room's requests; null: VT (system admins only). */
   managingOrganizationId: string | null
+  /** Shown only to those who can book it (access other than "Ingen"), its managers and system admins. */
+  hiddenWithoutAccess: boolean
 }
 
 export interface AdminRoom extends RoomFields {
