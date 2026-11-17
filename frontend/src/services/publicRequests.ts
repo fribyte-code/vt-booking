@@ -170,7 +170,7 @@ export const isOpenRequest = (r: Pick<PublicRequest, 'status'>) => r.status === 
  */
 export type PublicRequestView = 'OPEN' | 'DONE' | 'REJECTED' | 'ALL'
 
-export const PUBLIC_REQUEST_VIEWS: PublicRequestView[] = ['OPEN', 'DONE', 'REJECTED', 'ALL']
+export const PUBLIC_REQUEST_VIEWS: PublicRequestView[] = ['ALL', 'OPEN', 'DONE', 'REJECTED']
 
 export const publicRequestViewLabels: Record<PublicRequestView, string> = {
   OPEN: 'Åpne',
