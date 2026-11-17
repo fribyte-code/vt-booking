@@ -8,14 +8,11 @@ import type { Permission } from '../../types'
 import { RoomDot } from '../booking/badges'
 import { Button } from '../ui/Button'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
-import { Alert, Field, Input, Select } from '../ui/fields'
+import { Alert, Input } from '../ui/fields'
 import { Modal } from '../ui/Modal'
 
 const PERMISSIONS: Permission[] = ['DIRECT', 'REQUEST', 'NONE']
 const shortLabels: Record<Permission, string> = { DIRECT: 'Direkte', REQUEST: 'Søknad', NONE: 'Ingen' }
-
-/** `null` means the organization follows the room's default permission. */
-type Choice = Permission | null
 
 /** Above this many organizations the list gets a search field. */
 const SEARCH_THRESHOLD = 8
@@ -36,19 +33,19 @@ export function RoomAccessDialog({
   onPartiallySaved: () => void
 }) {
   const id = useId()
-  const initial = (orgId: string): Choice => room.access.find((a) => a.organizationId === orgId)?.permission ?? null
-  const [defaultPermission, setDefaultPermission] = useState(room.defaultPermission)
-  const [choices, setChoices] = useState<Record<string, Choice>>(() => Object.fromEntries(organizations.map((o) => [o.id, initial(o.id)])))
+  // What applies now: the organization's own setting, or the default the room was created with.
+  // The dialog shows only that; saving a change stores it for the organization.
+  const initial = (orgId: string): Permission => room.access.find((a) => a.organizationId === orgId)?.permission ?? room.defaultPermission
+  const [choices, setChoices] = useState<Record<string, Permission>>(() => Object.fromEntries(organizations.map((o) => [o.id, initial(o.id)])))
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
 
   const changedOrgs = organizations.filter((o) => choices[o.id] !== initial(o.id))
-  const defaultChanged = defaultPermission !== room.defaultPermission
-  const changeCount = changedOrgs.length + (defaultChanged ? 1 : 0)
+  const changeCount = changedOrgs.length
   const visible = organizations.filter((o) => o.name.toLowerCase().includes(query.trim().toLowerCase()))
-  const setAll = (choice: Choice) => setChoices(Object.fromEntries(organizations.map((o) => [o.id, choice])))
+  const setAll = (choice: Permission) => setChoices(Object.fromEntries(organizations.map((o) => [o.id, choice])))
 
   const close = () => (changeCount > 0 ? setConfirmDiscard(true) : onClose())
 
@@ -57,10 +54,6 @@ export function RoomAccessDialog({
     setError(null)
     let saved = 0
     try {
-      if (defaultChanged) {
-        await adminApi.updateRoom(room.id, { ...room, defaultPermission })
-        saved++
-      }
       for (const org of changedOrgs) {
         await adminApi.setRoomAccess(room.id, org.id, choices[org.id])
         saved++
@@ -100,16 +93,6 @@ export function RoomAccessDialog({
       }
     >
       <div className="space-y-4">
-        <Field label="Standardtilgang" htmlFor={`${id}-default`} hint="Gjelder organisasjoner som står på «Standard».">
-          <Select id={`${id}-default`} value={defaultPermission} onChange={(e) => setDefaultPermission(e.target.value as Permission)}>
-            {PERMISSIONS.map((p) => (
-              <option key={p} value={p}>
-                {permissionLabels[p]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
         {organizations.length === 0 ? (
           <p className="text-sm text-slate-500">Ingen aktive organisasjoner.</p>
         ) : (
@@ -122,9 +105,6 @@ export function RoomAccessDialog({
                 </div>
               )}
               <span className="text-xs text-slate-500">Sett alle til:</span>
-              <Button size="sm" variant="ghost" onClick={() => setAll(null)}>
-                Standard
-              </Button>
               {PERMISSIONS.map((p) => (
                 <Button key={p} size="sm" variant="ghost" onClick={() => setAll(p)}>
                   {shortLabels[p]}
@@ -141,7 +121,7 @@ export function RoomAccessDialog({
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-slate-900">{org.name}</p>
                       <p className="text-xs text-slate-500">
-                        {choice === null ? `Standard: ${permissionLabels[defaultPermission]}` : 'Egen innstilling'}
+                        {permissionLabels[choice]}
                         {changed && <span className="ml-1.5 font-medium text-amber-700">· endret</span>}
                       </p>
                     </div>
@@ -159,33 +139,28 @@ export function RoomAccessDialog({
   )
 }
 
-const selectedStyles: Record<Permission | 'DEFAULT', string> = {
-  DEFAULT: 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-300',
+const selectedStyles: Record<Permission, string> = {
   DIRECT: 'bg-emerald-600 text-white shadow-sm',
   REQUEST: 'bg-amber-500 text-white shadow-sm',
   NONE: 'bg-slate-600 text-white shadow-sm',
 }
 
-function PermissionToggle({ name, label, value, onChange }: { name: string; label: string; value: Choice; onChange: (choice: Choice) => void }) {
-  const options: { key: Permission | 'DEFAULT'; choice: Choice; text: string }[] = [
-    { key: 'DEFAULT', choice: null, text: 'Standard' },
-    ...PERMISSIONS.map((p) => ({ key: p, choice: p, text: shortLabels[p] })),
-  ]
+function PermissionToggle({ name, label, value, onChange }: { name: string; label: string; value: Permission; onChange: (choice: Permission) => void }) {
   return (
     <div role="radiogroup" aria-label={label} className="inline-flex shrink-0 rounded-lg bg-slate-100 p-0.5">
-      {options.map((o) => {
-        const checked = value === o.choice
+      {PERMISSIONS.map((p) => {
+        const checked = value === p
         return (
           <label
-            key={o.key}
-            title={o.choice ? permissionLabels[o.choice] : 'Følg rommets standardtilgang'}
+            key={p}
+            title={permissionLabels[p]}
             className={cn(
               'cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors has-focus-visible:ring-2 has-focus-visible:ring-slate-400',
-              checked ? selectedStyles[o.key] : 'text-slate-600 hover:text-slate-900',
+              checked ? selectedStyles[p] : 'text-slate-600 hover:text-slate-900',
             )}
           >
-            <input type="radio" className="sr-only" name={name} checked={checked} onChange={() => onChange(o.choice)} />
-            {o.text}
+            <input type="radio" className="sr-only" name={name} checked={checked} onChange={() => onChange(p)} />
+            {shortLabels[p]}
           </label>
         )
       })}
